@@ -24,6 +24,16 @@ bgcol0          = $d021
 raster          = $d012
 ctrl1           = $d011
 
+; SID voice 1
+sid_v1_freqlo   = $d400
+sid_v1_freqhi   = $d401
+sid_v1_pwlo     = $d402
+sid_v1_pwhi     = $d403
+sid_v1_ctrl     = $d404
+sid_v1_ad       = $d405
+sid_v1_sr       = $d406
+sid_mode_vol    = $d418
+
 left_eye_scr    = screen + (8*40) + 12
 right_eye_scr   = screen + (8*40) + 24
 left_eye_col    = color  + (8*40) + 12
@@ -49,7 +59,11 @@ ch_mouth_a      = $5f
 ch_mouth_b      = $69
 ch_brow         = $43
 
-mouth_delay     = 30
+; safe tweaks
+chirp_period    = 6
+chirp_length    = 1
+sid_volume      = 5
+speak_col       = 19      ; column under the mouth center
 
 start:
         sei
@@ -61,6 +75,7 @@ start:
 
         jsr detect_video_rate
         jsr set_scroll_delay
+        jsr init_sound
 
         lda #$01
         sta curx
@@ -73,14 +88,18 @@ start:
         lda #$00
         sta speak_trigger
         sta speaking
-        sta mouth_state
-        sta mouth_timer
         sta scroll_timer_lo
         sta scroll_timer_hi
         sta text_index
         sta done_flag
-        sta last_active_col
-        sta active_found
+        sta eye_found
+        sta eye_col
+        sta speak_found
+        sta speak_char
+        sta chirp_timer
+        sta chirp_len
+        sta chirp_phase
+        sta mouth_state
 
         jsr clear_screen
         jsr draw_face_static
@@ -94,7 +113,7 @@ main:
         jsr run_speech
         jsr move_current
         jsr update_eyes
-        jsr update_mouth
+        jsr update_sound_and_mouth
         jmp main
 
 wait_frame:
@@ -104,11 +123,6 @@ wf1:
         beq wf1
         rts
 
-; ----------------------------------------
-; Detect PAL/50Hz vs NTSC/60Hz by checking
-; whether raster reaches a high line number.
-; PAL reaches much higher raster values.
-; ----------------------------------------
 detect_video_rate:
 dv_wait_start:
         lda raster
@@ -146,11 +160,6 @@ dv_check_end:
         sta is_50hz
         rts
 
-; ----------------------------------------
-; Set scroll delay based on detected rate
-; 50Hz: 750 frames ~= 15 sec
-; 60Hz: 900 frames ~= 15 sec
-; ----------------------------------------
 set_scroll_delay:
         lda is_50hz
         beq ssd_60
@@ -166,6 +175,31 @@ ssd_60:
         sta scroll_delay_lo
         lda #>900
         sta scroll_delay_hi
+        rts
+
+init_sound:
+        lda #$00
+        sta sid_v1_ctrl
+        sta sid_v1_freqlo
+        sta sid_v1_freqhi
+
+        lda #$00
+        sta sid_v1_pwlo
+        lda #$08
+        sta sid_v1_pwhi
+
+        lda #$00
+        sta sid_v1_ad
+        lda #$00
+        sta sid_v1_sr
+
+        lda #sid_volume
+        sta sid_mode_vol
+        rts
+
+sound_off:
+        lda #$40
+        sta sid_v1_ctrl
         rts
 
 clear_screen:
@@ -292,16 +326,20 @@ maybe_start_speaking:
         sta text_index
         sta scroll_timer_lo
         sta scroll_timer_hi
-        sta mouth_timer
-        sta mouth_state
         sta done_flag
-        sta active_found
-        lda #20
-        sta last_active_col
+        sta eye_found
+        sta eye_col
+        sta speak_found
+        sta speak_char
+        sta chirp_timer
+        sta chirp_len
+        sta chirp_phase
+        sta mouth_state
         lda #$01
         sta speaking
         jsr clear_ticker
         jsr draw_mouth_still
+        jsr sound_off
 
 mss_done:
         rts
@@ -330,9 +368,9 @@ rs_chk:
 
         jsr scroll_ticker_left
         jsr fetch_next_char
-        jsr find_active_char
-        jsr set_mouth_from_active_char
-        jsr set_eyes_from_active_col
+        jsr find_eye_target
+        jsr find_speaking_char
+        jsr set_eyes_from_eye_col
 
         lda done_flag
         beq rs_done
@@ -343,6 +381,7 @@ rs_chk:
         lda #$00
         sta speaking
         jsr draw_mouth_still
+        jsr sound_off
 
 rs_done:
         rts
@@ -388,40 +427,61 @@ fnc_store:
         inc text_index
         rts
 
-find_active_char:
+; find a column for the eyes to follow
+; uses the center-most visible non-space
+find_eye_target:
         lda #$00
-        sta active_found
+        sta eye_found
+        lda #20
+        sta eye_col
 
-        ldx #$00
-fac_loop:
+        ldx #20
+fet_left:
         lda ticker_scr,x
         cmp #ch_space
-        beq fac_next
-
-        stx last_active_col
+        beq fet_left_next
+        stx eye_col
         lda #$01
-        sta active_found
+        sta eye_found
         rts
+fet_left_next:
+        dex
+        bpl fet_left
 
-fac_next:
-        inx
+        ldx #21
+fet_right:
         cpx #40
-        bne fac_loop
-        rts
-
-set_mouth_from_active_char:
-        lda active_found
-        beq sm_space
+        bcs fet_none
+        lda ticker_scr,x
+        cmp #ch_space
+        beq fet_right_next
+        stx eye_col
         lda #$01
-        sta mouth_on
+        sta eye_found
         rts
-sm_space:
-        lda #$00
-        sta mouth_on
+fet_right_next:
+        inx
+        bne fet_right
+
+fet_none:
         rts
 
-set_eyes_from_active_col:
-        lda active_found
+; only the character under the mouth speaks
+find_speaking_char:
+        lda ticker_scr+speak_col
+        sta speak_char
+        cmp #ch_space
+        beq fsc_space
+        lda #$01
+        sta speak_found
+        rts
+fsc_space:
+        lda #$00
+        sta speak_found
+        rts
+
+set_eyes_from_eye_col:
+        lda eye_found
         bne sefc_have
         lda #$01
         sta targetx
@@ -430,7 +490,7 @@ set_eyes_from_active_col:
         rts
 
 sefc_have:
-        lda last_active_col
+        lda eye_col
         cmp #13
         bcc sefc_left
         cmp #27
@@ -544,10 +604,8 @@ dms1:
         inx
         cpx #5
         bne dms1
-
         lda #$00
         sta mouth_state
-        sta mouth_timer
         rts
 
 draw_mouth_a:
@@ -576,36 +634,95 @@ dmb1:
         bne dmb1
         rts
 
-update_mouth:
-        lda mouth_on
-        beq mouth_off
+update_sound_and_mouth:
+        lda speak_found
+        beq usm_silent
 
-        inc mouth_timer
-        lda mouth_timer
-        cmp #mouth_delay
-        bcc mouth_done
+        lda chirp_len
+        beq usm_no_len
+        dec chirp_len
+        bne usm_after_len
+        jsr sound_off
+usm_after_len:
+usm_no_len:
+
+        inc chirp_timer
+        lda chirp_timer
+        cmp #chirp_period
+        bcc usm_done
 
         lda #$00
-        sta mouth_timer
+        sta chirp_timer
+        lda #chirp_length
+        sta chirp_len
 
+        inc chirp_phase
+        jsr start_pulse_chirp
+        jsr toggle_mouth
+        jmp usm_done
+
+usm_silent:
+        lda #$00
+        sta chirp_timer
+        sta chirp_len
+        jsr sound_off
+        jsr draw_mouth_still
+
+usm_done:
+        rts
+
+toggle_mouth:
         lda mouth_state
         eor #$01
         sta mouth_state
-        beq mouth_draw_a
-
+        beq tm_a
         jsr draw_mouth_b
-        jmp mouth_done
-
-mouth_draw_a:
+        rts
+tm_a:
         jsr draw_mouth_a
-        jmp mouth_done
+        rts
 
-mouth_off:
-        lda mouth_state
-        beq mouth_done
-        jsr draw_mouth_still
+start_pulse_chirp:
+        ; low byte = 80 + char*3 + phase*5
+        lda speak_char
+        asl
+        clc
+        adc speak_char
+        clc
+        adc #80
+        sta temp_lo
 
-mouth_done:
+        lda chirp_phase
+        asl
+        asl
+        clc
+        adc chirp_phase
+        clc
+        adc temp_lo
+        sta sid_v1_freqlo
+
+        ; high byte = 18 + ((char >> 3) & 7) + (phase & 1)
+        lda speak_char
+        lsr
+        lsr
+        lsr
+        and #$07
+        sta temp_hi
+
+        lda chirp_phase
+        and #$01
+        clc
+        adc temp_hi
+        clc
+        adc #18
+        sta sid_v1_freqhi
+
+        lda #$40
+        sta sid_v1_ctrl
+        nop
+        nop
+        lda #$41
+        sta sid_v1_ctrl
         rts
 
 ticker_is_empty:
@@ -639,12 +756,6 @@ targetx:
 targety:
         .byte $01
 
-mouth_state:
-        .byte $00
-mouth_timer:
-        .byte $00
-mouth_on:
-        .byte $00
 scroll_timer_lo:
         .byte $00
 scroll_timer_hi:
@@ -653,17 +764,40 @@ scroll_delay_lo:
         .byte $00
 scroll_delay_hi:
         .byte $00
+
 text_index:
         .byte $00
 speaking:
         .byte $00
 done_flag:
         .byte $00
-last_active_col:
-        .byte 20
-active_found:
+
+eye_found:
         .byte $00
+eye_col:
+        .byte 20
+
+speak_found:
+        .byte $00
+speak_char:
+        .byte $20
+
 is_50hz:
         .byte $00
 saw_high:
+        .byte $00
+
+chirp_timer:
+        .byte $00
+chirp_len:
+        .byte $00
+chirp_phase:
+        .byte $00
+
+mouth_state:
+        .byte $00
+
+temp_lo:
+        .byte $00
+temp_hi:
         .byte $00
