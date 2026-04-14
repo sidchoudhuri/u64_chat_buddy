@@ -1,11 +1,13 @@
 ; 64tass
 ; autostart SYS 2064
 ;
-; $c000       = top ticker trigger (write 1 to start scrolling)
-; $c001       = bottom ticker trigger (write 1 to start speaking)
-; $c003       = (was trigger, now $c001) - NOTE: trigger moved to $c001
-; $c100-$c1ff = bottom text buffer, 0-terminated, in SCREEN CODES
-; $c200-$c2ff = top text buffer, 0-terminated, in SCREEN CODES
+; version 0.3.1 (2026-04-14-5)
+;
+; $c000       = speak trigger (write 1 to start speaking, bottom ticker)
+; $c001       = input ready flag (asm sets 1 on Enter, python clears to 0)
+; $c002       = input length (number of bytes in input buffer)
+; $c100-$c1ff = bottom text buffer, 0-terminated, in SCREEN CODES (GPT response)
+; $c200-$c2ff = input text buffer, screen codes, length in $c002
 
 * = $0801
         .word line10, 10
@@ -16,10 +18,11 @@ line10  .word 0
 
 * = $0810
 
-top_trigger     = $c000
-speak_trigger   = $c001
+speak_trigger   = $c000
+input_ready     = $c001
+input_len_addr  = $c002
 textbuf         = $c100
-topbuf          = $c200
+inputbuf        = $c200
 
 screen          = $0400
 color           = $d800
@@ -111,8 +114,9 @@ start:
         sta targety
 
         lda #$00
-        sta top_trigger
         sta speak_trigger
+        sta input_ready
+        sta input_len_addr
         sta speaking
         sta scroll_timer_lo
         sta scroll_timer_hi
@@ -136,11 +140,9 @@ start:
         sta twitch_len
         sta window_timer_lo
         sta window_timer_hi
-        sta top_speaking
-        sta top_text_index
-        sta top_done_flag
-        sta top_scroll_timer_lo
-        sta top_scroll_timer_hi
+        sta input_scroll
+        sta input_len
+        sta input_waiting
 
         lda #$5a
         sta idle_seed
@@ -153,15 +155,16 @@ start:
         jsr init_eyes
         jsr draw_mouth_still
         jsr clear_ticker
-        jsr clear_top_ticker
+        jsr clear_input_line
         jsr draw_brows_neutral
         jsr set_idle_wait_timer
 
+        cli
+
 main:
         jsr wait_frame
-        jsr maybe_start_top_speaking
+        jsr poll_input
         jsr maybe_start_speaking
-        jsr run_top_speech
         jsr run_speech
         jsr update_mode
 
@@ -183,45 +186,39 @@ wf1:
         rts
 
 detect_video_rate:
-dv_wait0:
-        lda ctrl1
-        and #$80
-        bne dv_wait0
+dv_wait_start:
         lda raster
-        bne dv_wait0
+        cmp #$10
+        bcs dv_wait_start
+
+dv_wait_rise:
+        lda raster
+        cmp #$10
+        bcc dv_wait_rise
 
         lda #$00
-        sta dv_count
-        sta dv_frames
+        sta saw_high
 
-dv_outer:
+dv_loop:
         lda ctrl1
         and #$80
-        bne dv_outer
+        beq dv_check_end
+
         lda raster
-        bne dv_outer
+        cmp #$20
+        bcc dv_mark_high
+        jmp dv_check_end
 
-        inc dv_frames
-
-dv_leave:
-        lda raster
-        beq dv_leave
-
-        inc dv_count
-        lda dv_count
-        cmp #8
-        bne dv_outer
-
-        lda dv_frames
-        cmp #7
-        bcc dv_pal
-
-        lda #$00
-        sta is_50hz
-        rts
-
-dv_pal:
+dv_mark_high:
         lda #$01
+        sta saw_high
+
+dv_check_end:
+        lda raster
+        cmp #$10
+        bcs dv_loop
+
+        lda saw_high
         sta is_50hz
         rts
 
@@ -229,16 +226,16 @@ set_scroll_delay:
         lda is_50hz
         beq ssd_60
 
-        lda #<750
+        lda #<375
         sta scroll_delay_lo
-        lda #>750
+        lda #>375
         sta scroll_delay_hi
         rts
 
 ssd_60:
-        lda #<900
+        lda #<450
         sta scroll_delay_lo
-        lda #>900
+        lda #>450
         sta scroll_delay_hi
         rts
 
@@ -366,129 +363,183 @@ ct1:
         bne ct1
         rts
 
-clear_top_ticker:
+clear_input_line:
         lda #ch_space
         ldx #$00
-ctt1:
+cil1:
         sta top_ticker_scr,x
         lda #col_top_text
         sta top_ticker_col,x
         lda #ch_space
         inx
         cpx #40
-        bne ctt1
+        bne cil1
         rts
 
-; --- top ticker ---
+; --- c64 keyboard input system ---
+; reads keystrokes via GETIN ($ffe4)
+; echoes to row 1 with scrolling window
+; on Enter: writes length to $c002, sets $c001=1, waits for python to clear
+; on DEL: removes last character
+; max 254 characters
 
-maybe_start_top_speaking:
-        lda top_trigger
-        beq msts_done
+GETIN           = $ffe4
+ch_cursor       = $a0       ; reverse space as cursor
 
-        lda #$00
-        sta top_trigger
-        sta top_text_index
-        sta top_scroll_timer_lo
-        sta top_scroll_timer_hi
-        sta top_done_flag
-        lda #$01
-        sta top_speaking
-        jsr clear_top_ticker
+poll_input:
+        ; if waiting for python to read, don't accept new input
+        lda input_waiting
+        bne pi_done
 
-msts_done:
-        rts
+        jsr GETIN
+        beq pi_done
 
-run_top_speech:
-        lda top_speaking
-        bne rts_active
-        rts
+        cmp #$0d            ; Enter
+        beq pi_enter
 
-rts_active:
-        inc top_scroll_timer_lo
-        bne rts_chk
-        inc top_scroll_timer_hi
+        cmp #$14            ; DEL
+        beq pi_delete
 
-rts_chk:
+        ; only accept if input_len < 254
+        pha
+        lda input_len
+        cmp #254
+        pla
+        bcs pi_done
+
+        ; convert PETSCII to screen code
+        ; uppercase letters: PETSCII $41-$5A -> screen $01-$1A
+        cmp #$41
+        bcc pi_check_digit
+        cmp #$5b
+        bcs pi_check_digit
         sec
-        lda top_scroll_timer_lo
-        sbc scroll_delay_lo
-        lda top_scroll_timer_hi
-        sbc scroll_delay_hi
-        bcc rts_done
+        sbc #$40
+        jmp pi_store
 
+pi_check_digit:
+        ; space and printable punctuation/digits: pass through
+        cmp #$20
+        bcc pi_done         ; ignore anything below space
+
+pi_store:
+        ldy input_len
+        sta inputbuf,y
+        inc input_len
+        jsr redraw_input_line
+        jmp pi_done
+
+pi_delete:
+        lda input_len
+        beq pi_done         ; nothing to delete
+
+        dec input_len
+
+        ; adjust scroll if needed
+        lda input_scroll
+        beq pi_del_no_scroll
+        lda input_len
+        cmp input_scroll
+        bcs pi_del_no_scroll
+        dec input_scroll
+pi_del_no_scroll:
+        jsr redraw_input_line
+        jmp pi_done
+
+pi_enter:
+        lda input_len
+        beq pi_done         ; nothing to submit
+
+        ; write length to $c002
+        sta input_len_addr
+
+        ; set ready flag
+        lda #$01
+        sta input_ready
+
+        ; set waiting flag so we stop accepting input
+        lda #$01
+        sta input_waiting
+
+        ; clear input line display
+        jsr clear_input_line
+        jmp pi_done
+
+pi_done:
+        ; check if python has cleared the ready flag (read our input)
+        lda input_waiting
+        beq pi_not_waiting
+        lda input_ready
+        bne pi_not_waiting
+
+        ; python cleared the flag - reset input
         lda #$00
-        sta top_scroll_timer_lo
-        sta top_scroll_timer_hi
+        sta input_len
+        sta input_scroll
+        sta input_waiting
+        sta input_len_addr
+        jsr clear_input_line
 
-        jsr scroll_top_ticker_left
-        jsr fetch_next_top_char
-
-        lda top_done_flag
-        beq rts_done
-
-        jsr top_ticker_is_empty
-        cmp #$01
-        bne rts_done
-        lda #$00
-        sta top_speaking
-
-rts_done:
+pi_not_waiting:
         rts
 
-scroll_top_ticker_left:
+redraw_input_line:
+        ; update scroll: if input_len > 40, scroll = input_len - 40
+        lda input_len
+        cmp #40
+        bcc ril_no_scroll
+        sec
+        sbc #40
+        sta input_scroll
+        jmp ril_draw
+ril_no_scroll:
+        lda #$00
+        sta input_scroll
+
+ril_draw:
+        ; draw 40 chars from inputbuf+input_scroll to row 1
+        ldy input_scroll
         ldx #$00
-sttl1:
-        lda top_ticker_scr+1,x
+ril_loop:
+        cpx #40
+        beq ril_cursor
+        ; have we reached end of typed text?
+        cpy input_len
+        beq ril_fill_rest
+        lda inputbuf,y
+        sta top_ticker_scr,x
+        lda #col_top_text
+        sta top_ticker_col,x
+        iny
+        inx
+        jmp ril_loop
+
+ril_fill_rest:
+        ; fill remaining with spaces
+        lda #ch_space
         sta top_ticker_scr,x
         lda #col_top_text
         sta top_ticker_col,x
         inx
-        cpx #39
-        bne sttl1
-        rts
-
-fetch_next_top_char:
-        lda top_done_flag
-        beq fntc_read
-        lda #ch_space
-        sta top_ticker_scr+39
-        lda #col_top_text
-        sta top_ticker_col+39
-        rts
-
-fntc_read:
-        ldy top_text_index
-        lda topbuf,y
-        bne fntc_store
-
-        lda #$01
-        sta top_done_flag
-        lda #ch_space
-        sta top_ticker_scr+39
-        lda #col_top_text
-        sta top_ticker_col+39
-        rts
-
-fntc_store:
-        sta top_ticker_scr+39
-        lda #col_top_text
-        sta top_ticker_col+39
-        inc top_text_index
-        rts
-
-top_ticker_is_empty:
-        ldx #$00
-ttie1:
-        lda top_ticker_scr,x
-        cmp #ch_space
-        bne ttie_no
-        inx
         cpx #40
-        bne ttie1
-        lda #$01
-        rts
-ttie_no:
-        lda #$00
+        bne ril_fill_rest
+        jmp ril_cursor_pos
+
+ril_cursor:
+ril_cursor_pos:
+        ; draw cursor at current end position (capped at col 39)
+        lda input_len
+        sec
+        sbc input_scroll
+        cmp #40
+        bcc ril_cur_ok
+        lda #39
+ril_cur_ok:
+        tax
+        lda #ch_cursor
+        sta top_ticker_scr,x
+        lda #col_top_text
+        sta top_ticker_col,x
         rts
 
 ; --- bottom ticker / speech (unchanged) ---
@@ -772,6 +823,47 @@ cit_other:
         sta targety
 
 cit_done:
+        ; if user is typing, 80% chance override target with input position
+        lda input_len
+        beq cit_really_done
+
+        jsr next_rand
+        cmp #204
+        bcs cit_really_done
+
+        lda input_len
+        sec
+        sbc input_scroll
+        cmp #40
+        bcc cit_inp_got_col
+        lda #39
+cit_inp_got_col:
+        cmp #13
+        bcc cit_inp_left
+        cmp #27
+        bcc cit_inp_center
+
+        lda #$02
+        sta targetx
+        lda #$00
+        sta targety
+        rts
+
+cit_inp_center:
+        lda #$01
+        sta targetx
+        lda #$00
+        sta targety
+        rts
+
+cit_inp_left:
+        lda #$00
+        sta targetx
+        lda #$00
+        sta targety
+        rts
+
+cit_really_done:
         rts
 
 update_brows:
@@ -992,6 +1084,47 @@ sefc_left:
         lda #$00
         sta targetx
         lda #$02
+        sta targety
+        rts
+
+; set eye target based on cursor position in input line
+; maps input_len position to left/center/right same as bottom ticker
+; only called when not speaking
+set_eyes_from_input:
+        lda input_len
+        beq sefi_center     ; nothing typed, look center
+
+        ; visible cursor col = input_len - input_scroll, capped at 39
+        lda input_len
+        sec
+        sbc input_scroll
+        cmp #40
+        bcc sefi_got_col
+        lda #39
+sefi_got_col:
+        ; map col to eye zone: 0-12=left, 13-26=center, 27-39=right
+        cmp #13
+        bcc sefi_left
+        cmp #27
+        bcc sefi_center
+
+        lda #$02
+        sta targetx
+        lda #$00
+        sta targety
+        rts
+
+sefi_center:
+        lda #$01
+        sta targetx
+        lda #$00
+        sta targety
+        rts
+
+sefi_left:
+        lda #$00
+        sta targetx
+        lda #$00
         sta targety
         rts
 
@@ -1280,11 +1413,12 @@ window_timer_hi:    .byte $00
 temp_lo:            .byte $00
 temp_hi:            .byte $00
 
-dv_count:           .byte $00
-dv_frames:          .byte $00
+input_len:              .byte $00
+input_scroll:           .byte $00
+input_waiting:          .byte $00
 
-top_speaking:           .byte $00
-top_text_index:         .byte $00
-top_done_flag:          .byte $00
-top_scroll_timer_lo:    .byte $00
-top_scroll_timer_hi:    .byte $00
+; version info (not displayed, for identification only)
+version_str:    .text "0.3.1"
+                .byte 0
+build_str:      .text "2026-04-14-5"
+                .byte 0
