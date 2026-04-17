@@ -1,11 +1,13 @@
 ; 64tass
 ; autostart SYS 2064
 ;
-; version 0.3.1 (2026-04-14-5)
+; version 0.4.2 (2026-04-15-1)
 ;
 ; $c000       = speak trigger (write 1 to start speaking, bottom ticker)
 ; $c001       = input ready flag (asm sets 1 on Enter, python clears to 0)
 ; $c002       = input length (number of bytes in input buffer)
+; $c004       = mode flag (0=KBD, 1=MIC) — python reads this
+; $c005       = busy flag (1=speaking, 0=idle) — python polls before sending
 ; $c100-$c1ff = bottom text buffer, 0-terminated, in SCREEN CODES (GPT response)
 ; $c200-$c2ff = input text buffer, screen codes, length in $c002
 
@@ -21,8 +23,23 @@ line10  .word 0
 speak_trigger   = $c000
 input_ready     = $c001
 input_len_addr  = $c002
+mode_flag_addr  = $c004
+busy_flag_addr  = $c005
 textbuf         = $c100
 inputbuf        = $c200
+
+; mode indicator position (row 0, cols 0-4)
+mode_ind_scr    = screen + (0*40)
+mode_ind_col    = color  + (0*40)
+
+; mode constants
+MODE_KBD        = 0
+MODE_MIC        = 1
+
+; colors
+col_ind_kbd     = $0e       ; light blue
+col_ind_mic_on  = $02       ; red
+col_ind_mic_off = $00       ; black (blink off)
 
 screen          = $0400
 color           = $d800
@@ -117,6 +134,8 @@ start:
         sta speak_trigger
         sta input_ready
         sta input_len_addr
+        sta mode_flag_addr
+        sta busy_flag_addr
         sta speaking
         sta scroll_timer_lo
         sta scroll_timer_hi
@@ -143,6 +162,13 @@ start:
         sta input_scroll
         sta input_len
         sta input_waiting
+        sta current_mode
+        sta blink_timer
+        sta blink_state
+
+        ; write initial mode to $c004
+        lda #MODE_KBD
+        sta mode_flag_addr
 
         lda #$5a
         sta idle_seed
@@ -156,6 +182,7 @@ start:
         jsr draw_mouth_still
         jsr clear_ticker
         jsr clear_input_line
+        jsr draw_mode_indicator
         jsr draw_brows_neutral
         jsr set_idle_wait_timer
 
@@ -163,6 +190,7 @@ start:
 
 main:
         jsr wait_frame
+        jsr update_blink
         jsr poll_input
         jsr maybe_start_speaking
         jsr run_speech
@@ -226,16 +254,16 @@ set_scroll_delay:
         lda is_50hz
         beq ssd_60
 
-        lda #<375
+        lda #<200
         sta scroll_delay_lo
-        lda #>375
+        lda #>200
         sta scroll_delay_hi
         rts
 
 ssd_60:
-        lda #<450
+        lda #<250
         sta scroll_delay_lo
-        lda #>450
+        lda #>250
         sta scroll_delay_hi
         rts
 
@@ -376,7 +404,106 @@ cil1:
         bne cil1
         rts
 
-; --- c64 keyboard input system ---
+; --- mode indicator ---
+; row 0 cols 0-7: F1[KBD] or F1[MIC]
+; in MIC mode, MIC chars blink red, rest stay light blue
+
+; screen codes for F1[KBD]
+ind_kbd_str:
+        .byte $06           ; F
+        .byte $31           ; 1
+        .byte $1b           ; [
+        .byte $0b           ; K
+        .byte $02           ; B
+        .byte $04           ; D
+        .byte $1d           ; ]
+
+; screen codes for F1[MIC]
+ind_mic_str:
+        .byte $06           ; F
+        .byte $31           ; 1
+        .byte $1b           ; [
+        .byte $0d           ; M
+        .byte $09           ; I
+        .byte $03           ; C
+        .byte $1d           ; ]
+
+draw_mode_indicator:
+        lda current_mode
+        beq dmi_kbd
+
+        ; MIC mode - draw all 7 chars, MIC portion in red
+        ldx #$00
+dmi_mic_loop:
+        lda ind_mic_str,x
+        sta mode_ind_scr,x
+        ; cols 0-1 (F,1) stay light blue
+        ; cols 2-6 ([,M,I,C,]) start red
+        cpx #2
+        bcc dmi_mic_blue
+        lda #col_ind_mic_on
+        jmp dmi_mic_setcol
+dmi_mic_blue:
+        lda #col_ind_kbd
+dmi_mic_setcol:
+        sta mode_ind_col,x
+        inx
+        cpx #7
+        bne dmi_mic_loop
+        rts
+
+dmi_kbd:
+        ldx #$00
+dmi_kbd_loop:
+        lda ind_kbd_str,x
+        sta mode_ind_scr,x
+        lda #col_ind_kbd
+        sta mode_ind_col,x
+        inx
+        cpx #7
+        bne dmi_kbd_loop
+        rts
+
+update_blink:
+        lda current_mode
+        cmp #MODE_MIC
+        bne ub_blink_done   ; only blink in MIC mode
+
+        inc blink_timer
+        lda blink_timer
+        cmp #25
+        bcc ub_blink_done
+
+        lda #$00
+        sta blink_timer
+
+        lda blink_state
+        eor #$01
+        sta blink_state
+
+        beq ub_blink_off
+        ; blink on - [MIC] chars red (cols 2-6)
+        lda #col_ind_mic_on
+        sta mode_ind_col+2
+        sta mode_ind_col+3
+        sta mode_ind_col+4
+        sta mode_ind_col+5
+        sta mode_ind_col+6
+        rts
+
+ub_blink_off:
+        ; blink off - [MIC] chars black (cols 2-6)
+        lda #col_ind_mic_off
+        sta mode_ind_col+2
+        sta mode_ind_col+3
+        sta mode_ind_col+4
+        sta mode_ind_col+5
+        sta mode_ind_col+6
+
+ub_blink_done:
+        rts
+
+
 ; reads keystrokes via GETIN ($ffe4)
 ; echoes to row 1 with scrolling window
 ; on Enter: writes length to $c002, sets $c001=1, waits for python to clear
@@ -389,10 +516,31 @@ ch_cursor       = $a0       ; reverse space as cursor
 poll_input:
         ; if waiting for python to read, don't accept new input
         lda input_waiting
-        bne pi_done
+        beq pi_not_waiting
+        jmp pi_done
+pi_not_waiting:
 
         jsr GETIN
-        beq pi_done
+        bne pi_got_key
+        jmp pi_done
+pi_got_key:
+
+        ; save keypress
+        sta pi_key
+
+        ; F1 key toggles mode (PETSCII $85)
+        cmp #$85
+        beq pi_toggle_mode
+
+        ; in MIC mode, ignore all other keyboard input
+        lda current_mode
+        cmp #MODE_MIC
+        bne pi_kbd_mode
+        jmp pi_done
+pi_kbd_mode:
+
+        ; restore key
+        lda pi_key
 
         cmp #$0d            ; Enter
         beq pi_enter
@@ -405,7 +553,9 @@ poll_input:
         lda input_len
         cmp #254
         pla
-        bcs pi_done
+        bcc pi_len_ok
+        jmp pi_done
+pi_len_ok:
 
         ; convert PETSCII to screen code
         ; uppercase letters: PETSCII $41-$5A -> screen $01-$1A
@@ -420,7 +570,8 @@ poll_input:
 pi_check_digit:
         ; space and printable punctuation/digits: pass through
         cmp #$20
-        bcc pi_done         ; ignore anything below space
+        bcs pi_store
+        jmp pi_done
 
 pi_store:
         ldy input_len
@@ -465,12 +616,24 @@ pi_enter:
         jsr clear_input_line
         jmp pi_done
 
+pi_toggle_mode:
+        lda current_mode
+        eor #$01
+        sta current_mode
+        sta mode_flag_addr
+        lda #$00
+        sta blink_timer
+        sta blink_state
+        jsr clear_input_line
+        jsr draw_mode_indicator
+        jmp pi_done
+
 pi_done:
         ; check if python has cleared the ready flag (read our input)
         lda input_waiting
-        beq pi_not_waiting
+        beq pi_end
         lda input_ready
-        bne pi_not_waiting
+        bne pi_end
 
         ; python cleared the flag - reset input
         lda #$00
@@ -480,7 +643,7 @@ pi_done:
         sta input_len_addr
         jsr clear_input_line
 
-pi_not_waiting:
+pi_end:
         rts
 
 redraw_input_line:
@@ -565,6 +728,7 @@ maybe_start_speaking:
         sta idle_state
         lda #$01
         sta speaking
+        sta busy_flag_addr
         jsr clear_ticker
         jsr draw_mouth_still
         jsr draw_brows_neutral
@@ -609,6 +773,7 @@ rs_chk:
         bne rs_done
         lda #$00
         sta speaking
+        sta busy_flag_addr
         jsr draw_mouth_still
         jsr sound_off
         jsr set_idle_wait_timer
@@ -1417,8 +1582,13 @@ input_len:              .byte $00
 input_scroll:           .byte $00
 input_waiting:          .byte $00
 
+current_mode:           .byte $00
+blink_timer:            .byte $00
+blink_state:            .byte $00
+pi_key:                 .byte $00
+
 ; version info (not displayed, for identification only)
-version_str:    .text "0.3.1"
+version_str:    .text "0.4.2"
                 .byte 0
-build_str:      .text "2026-04-14-5"
+build_str:      .text "2026-04-15-1"
                 .byte 0
