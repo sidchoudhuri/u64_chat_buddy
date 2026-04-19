@@ -475,7 +475,13 @@ draw_music_indicator:
 dmi_mus_on_loop:
         lda ind_mus_str,x
         sta mus_ind_scr,x
+        cpx #2
+        bcc dmi_mus_blue
         lda #col_ind_mic_on
+        jmp dmi_mus_setcol
+dmi_mus_blue:
+        lda #col_ind_kbd
+dmi_mus_setcol:
         sta mus_ind_col,x
         inx
         cpx #7
