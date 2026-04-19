@@ -33,6 +33,7 @@ TIMEOUT             = 5.0
 POLL_INTERVAL       = 0.05
 MAX_RESPONSE_CHARS  = 254
 BUSY_POLL_INTERVAL  = 0.1     # how often to check busy flag
+SCROLL_INTERVAL     = 0.12   # seconds between scroll steps on input line
 
 # mic settings
 MIC_SAMPLE_RATE     = 16000
@@ -189,6 +190,18 @@ def clear_input_line_display(client: httpx.Client, host: str) -> None:
     """Clear row 1 screen RAM."""
     http_put(client, host, INPUT_LINE_SCR_ADDR, bytes([0x20] * 40))
     http_put(client, host, INPUT_LINE_COL_ADDR, bytes([INPUT_LINE_COLOR] * 40))
+
+def scroll_input_line(client: httpx.Client, host: str, text: str,
+                      stop_event: threading.Event) -> None:
+    text = text[:80]
+    if len(text) <= 40:
+        display_on_input_line(client, host, text)
+        return
+    for i in range(len(text) - 39):
+        if stop_event.is_set():
+            return
+        display_on_input_line(client, host, text[i:i + 40])
+        time.sleep(SCROLL_INTERVAL)
 
 def run_prg(host: str, prg_path: str) -> None:
     url = f"http://{host}/v1/runners:run_prg"
@@ -348,13 +361,21 @@ def mic_listener(openai_client: OpenAI, http: httpx.Client, host: str,
                             text = transcribe(openai_client, frames, MIC_SAMPLE_RATE)
                             if text:
                                 print(f"> {text}")
+                                scroll_stop = threading.Event()
+                                scroll_thread = threading.Thread(
+                                    target=scroll_input_line,
+                                    args=(http, host, text, scroll_stop),
+                                    daemon=True,
+                                )
+                                scroll_thread.start()
                                 with gpt_lock:
-                                    display_on_input_line(http, host, text)
                                     process_input(
                                         text, openai_client, http, host,
                                         history, stop_event
                                     )
-                                    clear_input_line_display(http, host)
+                                scroll_stop.set()
+                                scroll_thread.join(timeout=1.0)
+                                clear_input_line_display(http, host)
                         recording = False
                         frames = []
                         silence_start = None
