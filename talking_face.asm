@@ -1,7 +1,7 @@
 ; 64tass
 ; autostart SYS 2064
 ;
-; version 0.4.3 (2026-04-19-1)
+; version 0.4.4 (2026-04-19-1)
 ;
 ; $c000       = speak trigger (write 1 to start speaking, bottom ticker)
 ; $c001       = input ready flag (asm sets 1 on Enter, python clears to 0)
@@ -1566,7 +1566,7 @@ current_mode:           .byte $00
 pi_key:                 .byte $00
 
 ; version info (not displayed, for identification only)
-version_str:    .text "0.4.3"
+version_str:    .text "0.4.4"
                 .byte 0
 build_str:      .text "2026-04-19-1"
                 .byte 0

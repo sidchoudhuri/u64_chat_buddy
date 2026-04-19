@@ -17,7 +17,7 @@ try:
 except ImportError:
     PYAUDIO_AVAILABLE = False
 
-VERSION = "0.4.3"
+VERSION = "0.4.4"
 BUILD   = "2026-04-19-1"
 
 CONFIG_PATH = Path(__file__).parent / ".c64_config.json"
