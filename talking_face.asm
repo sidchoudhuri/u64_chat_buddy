@@ -949,9 +949,14 @@ cit_center:
         jmp cit_done
 
 cit_side:
-        lda idle_seed
+        jsr next_rand
         and #$01
         sta targetx
+        jsr next_rand
+        and #$01
+        beq cit_side_done
+        inc targetx
+cit_side_done:
         lda #$01
         sta targety
         jmp cit_done
