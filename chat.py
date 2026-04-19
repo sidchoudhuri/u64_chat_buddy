@@ -45,10 +45,10 @@ SILENCE_THRESHOLD   = 1500
 SILENCE_DURATION    = 1.0
 MIN_SPEECH_DURATION = 0.5
 MIN_SPEECH_RMS      = 800
-MUSIC_CHUNK_DURATION    = 8.0
-MUSIC_COMMENT_PROB      = 0.35
-MUSIC_COMMENT_COOLDOWN  = 20.0
-MUSIC_ENERGY_CHANGE     = 0.4
+MUSIC_CHUNK_DURATION    = 8.0    # seconds of audio per analysis window
+MUSIC_COMMENT_PROB      = 0.35   # base probability of commenting per window
+MUSIC_COMMENT_COOLDOWN  = 20.0   # minimum seconds between spontaneous comments
+MUSIC_ENERGY_CHANGE     = 0.4    # relative RMS shift that doubles comment probability
 
 MODE_KBD = 0
 MODE_MIC = 1
@@ -413,7 +413,7 @@ def mic_listener(openai_client: OpenAI, http: httpx.Client, host: str,
                     if last_energy is not None:
                         change = abs(energy - last_energy) / max(last_energy, 1)
                         if change > MUSIC_ENERGY_CHANGE:
-                            prob = min(prob * 2, 0.8)
+                            prob = min(prob * 2, 0.8)  # big energy shift = more likely to comment
                     if random.random() < prob:
                         last_comment_time = now
                         frames_copy = list(chunk_frames)

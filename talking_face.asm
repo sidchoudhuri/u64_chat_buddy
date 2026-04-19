@@ -468,6 +468,7 @@ ind_mus_str:
         .byte $13           ; S
         .byte $1d           ; ]
 
+; F3 stays light blue always; [MUS] flips to red when music_active_addr is set
 draw_music_indicator:
         lda music_active_addr
         beq dmi_mus_off
@@ -949,6 +950,7 @@ cit_center:
         jmp cit_done
 
 cit_side:
+        ; two 1-bit draws: 25% left (0), 50% center (1), 25% right (2)
         jsr next_rand
         and #$01
         sta targetx
