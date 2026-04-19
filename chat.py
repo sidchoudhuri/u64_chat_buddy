@@ -24,6 +24,7 @@ CONFIG_PATH = Path(__file__).parent / ".c64_config.json"
 SPEAK_TRIGGER_ADDR  = 0xC000
 INPUT_READY_ADDR    = 0xC001
 INPUT_LEN_ADDR      = 0xC002
+MUSIC_TRIGGER_ADDR  = 0xC003
 MODE_FLAG_ADDR      = 0xC004
 BUSY_FLAG_ADDR      = 0xC005
 BOT_TEXT_ADDR       = 0xC100
@@ -43,6 +44,7 @@ SILENCE_THRESHOLD   = 1500
 SILENCE_DURATION    = 1.0
 MIN_SPEECH_DURATION = 0.5
 MIN_SPEECH_RMS      = 800
+MUSIC_CLIP_DURATION = 10.0
 
 MODE_KBD = 0
 MODE_MIC = 1
@@ -64,8 +66,11 @@ for i in range(10):
 SYSTEM_PROMPT = (
     "You are a Commodore 64 AI assistant displayed on a retro computer screen. "
     "Reply in plain ASCII only — no markdown, no special characters. "
-    "Be extremely concise: one or two short sentences maximum, under 200 characters total."
+    "Be extremely concise: one or two short sentences maximum, under 200 characters total. "
+    "When you receive a [music] message, react naturally to what you hear as if listening along."
 )
+
+WHISPER_MUSIC_PROMPT = "Song lyrics, singing, music."
 
 def load_or_ask_host() -> str:
     if CONFIG_PATH.exists():
@@ -266,6 +271,69 @@ def transcribe(openai_client: OpenAI, audio_frames: list, sample_rate: int) -> s
     finally:
         Path(tmp_path).unlink(missing_ok=True)
 
+def record_clip(stream, duration: float) -> list:
+    chunks = int(duration * MIC_SAMPLE_RATE / MIC_CHUNK)
+    return [stream.read(MIC_CHUNK, exception_on_overflow=False) for _ in range(chunks)]
+
+def transcribe_music(openai_client: OpenAI, frames: list) -> str | None:
+    with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as f:
+        tmp_path = f.name
+    with wave.open(tmp_path, 'wb') as wf:
+        wf.setnchannels(MIC_CHANNELS)
+        wf.setsampwidth(2)
+        wf.setframerate(MIC_SAMPLE_RATE)
+        wf.writeframes(b''.join(frames))
+    try:
+        with open(tmp_path, "rb") as audio_file:
+            result = openai_client.audio.transcriptions.create(
+                model="whisper-1",
+                file=audio_file,
+                prompt=WHISPER_MUSIC_PROMPT,
+            )
+        return result.text.strip() or None
+    except Exception as e:
+        print(f"error: whisper: {e}", file=sys.stderr)
+        return None
+    finally:
+        Path(tmp_path).unlink(missing_ok=True)
+
+def energy_desc(frames: list) -> str:
+    level = mean_rms(frames)
+    if level > 2000: return "intense"
+    if level > 1000: return "lively"
+    if level > 400:  return "mellow"
+    return "quiet"
+
+def handle_music_clip(openai_client: OpenAI, http: httpx.Client, host: str,
+                      history: list, stop_event: threading.Event,
+                      gpt_lock: threading.Lock, stream) -> None:
+    print("recording...")
+    display_on_input_line(http, host, "listening...")
+    frames = record_clip(stream, MUSIC_CLIP_DURATION)
+
+    lyrics = transcribe_music(openai_client, frames)
+    mood = energy_desc(frames)
+
+    if lyrics:
+        user_msg = f"[music] {mood} — \"{lyrics}\""
+    else:
+        user_msg = f"[music] {mood}"
+
+    print(f"> {user_msg}")
+
+    scroll_stop = threading.Event()
+    scroll_thread = threading.Thread(
+        target=scroll_input_line,
+        args=(http, host, lyrics or mood, scroll_stop),
+        daemon=True,
+    )
+    scroll_thread.start()
+    with gpt_lock:
+        process_input(user_msg, openai_client, http, host, history, stop_event)
+    scroll_stop.set()
+    scroll_thread.join(timeout=1.0)
+    clear_input_line_display(http, host)
+
 def process_input(user_input: str, openai_client: OpenAI,
                   http: httpx.Client, host: str, history: list,
                   stop_event: threading.Event) -> None:
@@ -318,6 +386,12 @@ def mic_listener(openai_client: OpenAI, http: httpx.Client, host: str,
     print("mic listener started")
 
     while not stop_event.is_set():
+        music = http_readmem(http, host, MUSIC_TRIGGER_ADDR, 1)
+        if music and music[0] == 1:
+            http_put(http, host, MUSIC_TRIGGER_ADDR, b"\x00")
+            handle_music_clip(openai_client, http, host, history, stop_event, gpt_lock, stream)
+            continue
+
         result = http_readmem(http, host, MODE_FLAG_ADDR, 1)
         if result is None or result[0] != MODE_MIC:
             time.sleep(0.1)

@@ -6,6 +6,7 @@
 ; $c000       = speak trigger (write 1 to start speaking, bottom ticker)
 ; $c001       = input ready flag (asm sets 1 on Enter, python clears to 0)
 ; $c002       = input length (number of bytes in input buffer)
+; $c003       = music trigger (F2 sets 1, python clears to 0)
 ; $c004       = mode flag (0=KBD, 1=MIC) — python reads this
 ; $c005       = busy flag (1=speaking, 0=idle) — python polls before sending
 ; $c100-$c1ff = bottom text buffer, 0-terminated, in SCREEN CODES (GPT response)
@@ -20,11 +21,12 @@ line10  .word 0
 
 * = $0810
 
-speak_trigger   = $c000
-input_ready     = $c001
-input_len_addr  = $c002
-mode_flag_addr  = $c004
-busy_flag_addr  = $c005
+speak_trigger       = $c000
+input_ready         = $c001
+input_len_addr      = $c002
+music_trigger_addr  = $c003
+mode_flag_addr      = $c004
+busy_flag_addr      = $c005
 textbuf         = $c100
 inputbuf        = $c200
 
@@ -131,6 +133,7 @@ start:
         sta speak_trigger
         sta input_ready
         sta input_len_addr
+        sta music_trigger_addr
         sta mode_flag_addr
         sta busy_flag_addr
         sta speaking
@@ -470,6 +473,9 @@ pi_got_key:
         cmp #$85            ; F1
         beq pi_toggle_mode
 
+        cmp #$89            ; F2
+        beq pi_music_trigger
+
         lda current_mode
         cmp #MODE_MIC
         bne pi_kbd_mode
@@ -542,6 +548,11 @@ pi_enter:
         sta input_waiting
 
         jsr clear_input_line
+        jmp pi_done
+
+pi_music_trigger:
+        lda #$01
+        sta music_trigger_addr
         jmp pi_done
 
 pi_toggle_mode:
