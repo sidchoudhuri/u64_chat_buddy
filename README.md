@@ -271,14 +271,56 @@ If you want different real-time behavior on 50 Hz vs 60 Hz, change that routine.
 | Voice too shrill or too deep | pitch math in `start_pulse_chirp` |
 | Voice too clicky | ADSR in `init_sound` |
 
+## Mic Mode and Transcription
+
+### Toggling input mode
+Press **F1** on the C64 to toggle between keyboard and mic mode.
+The top-left indicator shows the current mode:
+- `F1[KBD]` — light blue, keyboard input active
+- `F1[MIC]` — red, microphone listening
+
+### How mic input works
+`chat.py` listens to the microphone using PyAudio and detects speech by watching the audio volume level. When the level exceeds `SILENCE_THRESHOLD`, it starts recording. When it drops back below that level for at least `SILENCE_DURATION` seconds, it stops and sends the clip to OpenAI Whisper for transcription.
+
+The transcribed text is then sent to GPT-4o and the response is displayed on the bottom ticker, same as keyboard input.
+
+### Scrolling input display
+While the C64 is waiting for a GPT response, the transcribed text scrolls across row 1 of the screen (directly below the mode indicator). Text up to 80 characters is supported — anything beyond that is cut off. GPT processing starts immediately in parallel, so the response may arrive before the scroll finishes.
+
+### Transcription settings
+These constants in `chat.py` control mic sensitivity and transcription behaviour:
+
+| Constant | Default | Effect |
+|---|---|---|
+| `SILENCE_THRESHOLD` | `1500` | RMS level that counts as speech. Raise if background noise triggers false recordings, lower if your voice isn't being picked up. |
+| `SILENCE_DURATION` | `1.0` | Seconds of quiet before a recording is submitted. |
+| `MIN_SPEECH_DURATION` | `0.5` | Minimum recording length in seconds. Clips shorter than this are discarded. |
+| `MIN_SPEECH_RMS` | `800` | Average energy across the whole clip must exceed this or it is skipped before even calling Whisper. |
+| `SCROLL_INTERVAL` | `0.12` | Seconds between scroll steps on the input line. |
+
+### Whisper hallucination filtering
+Whisper tends to hallucinate YouTube-style phrases ("Thank you for watching", etc.) when given silence or low-level noise. The code applies three layers of protection:
+
+1. **Energy gate** — clips with low average RMS are discarded before being sent to Whisper.
+2. **Domain prompt** — Whisper is given a short context prompt ("User speaking a short question or command to a Commodore 64 computer.") to anchor its output.
+3. **Phrase blocklist** — known hallucination phrases are matched and dropped after transcription.
+
+If you still see garbage transcriptions in the terminal (prefixed with `skipped:`), try raising `SILENCE_THRESHOLD`.
+
+### Dependencies
+```bash
+pip install openai pyaudio httpx
+```
+PyAudio requires PortAudio. On macOS: `brew install portaudio`. On Linux: `apt install portaudio19-dev`.
+
 ## Build / Test Cycle
 
-After making changes:
+After making changes to the assembly:
 
 ```bash
 64tass -a -B -o talking_face.prg talking_face.asm
-curl -F "file=@talking_face.prg" http://192.168.2.60/v1/runners:run_prg
-python3 speak_text.py hello sid this is a test
+curl -F "file=@talking_face.prg" http://192.168.2.64/v1/runners:run_prg
+python3 chat.py
 ```
 
 ## Safe First Things to Tweak
