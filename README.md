@@ -313,6 +313,37 @@ pip install openai pyaudio httpx
 ```
 PyAudio requires PortAudio. On macOS: `brew install portaudio`. On Linux: `apt install portaudio19-dev`.
 
+## Music Mode
+
+### Toggling music recording
+Press **F3** on the C64 to start or stop music recording. The top-right indicator shows the current state:
+- `F3[MUS]` — light blue (all 7 chars), music recording off
+- `F3[MUS]` — `F3` light blue, `[MUS]` red, music recording active
+
+### How music mode works
+While music recording is active, `chat.py` continuously listens to the microphone in 8-second windows. After each window it decides probabilistically whether to comment. If it comments, it:
+1. Sends the audio clip to Whisper for lyric/content transcription
+2. Measures the audio energy to pick a mood word (quiet / mellow / lively / intense)
+3. Builds a message like `[music] lively — "hey jude"` and sends it to GPT-4o
+4. Scrolls the transcribed text on row 1 while the GPT response plays on the bottom ticker
+
+GPT-4o is given the context that `[music]` messages are from a listener reacting to music it can hear, so replies are natural and conversational rather than assistant-like.
+
+### Spontaneous comment behaviour
+The bot does not comment on every window. It rolls dice each window, with the base probability boosted when the audio energy changes significantly (e.g. a chorus kicks in or the song changes). There is also a minimum cooldown between comments so it doesn't spam.
+
+### Tuning constants
+
+| Constant | Default | Effect |
+|---|---|---|
+| `MUSIC_CHUNK_DURATION` | `8.0` | Seconds of audio per analysis window. |
+| `MUSIC_COMMENT_PROB` | `0.35` | Base probability of commenting per window. |
+| `MUSIC_COMMENT_COOLDOWN` | `20.0` | Minimum seconds between spontaneous comments. |
+| `MUSIC_ENERGY_CHANGE` | `0.4` | Relative RMS shift (40%) that doubles comment probability. |
+
+### Session memory
+Music comments use the same conversation history as keyboard and mic input, so the bot remembers what it heard earlier in the session and can refer back to it.
+
 ## Build / Test Cycle
 
 After making changes to the assembly:
