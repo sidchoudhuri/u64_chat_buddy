@@ -39,7 +39,6 @@ MODE_MIC        = 1
 ; colors
 col_ind_kbd     = $0e       ; light blue
 col_ind_mic_on  = $02       ; red
-col_ind_mic_off = $00       ; black (blink off)
 
 screen          = $0400
 color           = $d800
@@ -163,9 +162,6 @@ start:
         sta input_len
         sta input_waiting
         sta current_mode
-        sta blink_timer
-        sta blink_state
-
         ; write initial mode to $c004
         lda #MODE_KBD
         sta mode_flag_addr
@@ -190,7 +186,6 @@ start:
 
 main:
         jsr wait_frame
-        jsr update_blink
         jsr poll_input
         jsr maybe_start_speaking
         jsr run_speech
@@ -464,46 +459,6 @@ dmi_kbd_loop:
         bne dmi_kbd_loop
         rts
 
-update_blink:
-        lda current_mode
-        cmp #MODE_MIC
-        bne ub_blink_done   ; only blink in MIC mode
-
-        inc blink_timer
-        lda blink_timer
-        cmp #25
-        bcc ub_blink_done
-
-        lda #$00
-        sta blink_timer
-
-        lda blink_state
-        eor #$01
-        sta blink_state
-
-        beq ub_blink_off
-        ; blink on - [MIC] chars red (cols 2-6)
-        lda #col_ind_mic_on
-        sta mode_ind_col+2
-        sta mode_ind_col+3
-        sta mode_ind_col+4
-        sta mode_ind_col+5
-        sta mode_ind_col+6
-        rts
-
-ub_blink_off:
-        ; blink off - [MIC] chars black (cols 2-6)
-        lda #col_ind_mic_off
-        sta mode_ind_col+2
-        sta mode_ind_col+3
-        sta mode_ind_col+4
-        sta mode_ind_col+5
-        sta mode_ind_col+6
-
-ub_blink_done:
-        rts
-
-
 ; reads keystrokes via GETIN ($ffe4)
 ; echoes to row 1 with scrolling window
 ; on Enter: writes length to $c002, sets $c001=1, waits for python to clear
@@ -621,9 +576,6 @@ pi_toggle_mode:
         eor #$01
         sta current_mode
         sta mode_flag_addr
-        lda #$00
-        sta blink_timer
-        sta blink_state
         jsr clear_input_line
         jsr draw_mode_indicator
         jmp pi_done
@@ -1583,8 +1535,6 @@ input_scroll:           .byte $00
 input_waiting:          .byte $00
 
 current_mode:           .byte $00
-blink_timer:            .byte $00
-blink_state:            .byte $00
 pi_key:                 .byte $00
 
 ; version info (not displayed, for identification only)
