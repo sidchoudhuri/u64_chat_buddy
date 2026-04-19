@@ -38,9 +38,10 @@ BUSY_POLL_INTERVAL  = 0.1     # how often to check busy flag
 MIC_SAMPLE_RATE     = 16000
 MIC_CHANNELS        = 1
 MIC_CHUNK           = 1024
-SILENCE_THRESHOLD   = 500
+SILENCE_THRESHOLD   = 1500   # raised from 500 — filters ambient noise/hum
 SILENCE_DURATION    = 1.0
-MIN_SPEECH_DURATION = 0.3
+MIN_SPEECH_DURATION = 0.5    # raised from 0.3 — avoids submitting noise bursts
+MIN_SPEECH_RMS      = 800    # mean energy gate: whole clip must exceed this
 
 MODE_KBD = 0
 MODE_MIC = 1
@@ -207,7 +208,28 @@ def rms(data: bytes) -> float:
     samples = struct.unpack(f"{count}h", data)
     return (sum(s * s for s in samples) / count) ** 0.5
 
+WHISPER_HALLUCINATIONS = {
+    "thank you for watching",
+    "thanks for watching",
+    "please like and subscribe",
+    "don't forget to subscribe",
+    "see you in the next video",
+    "ご視聴ありがとうございました",
+}
+
+WHISPER_PROMPT = (
+    "User speaking a short question or command to a Commodore 64 computer."
+)
+
+def mean_rms(frames: list) -> float:
+    all_data = b''.join(frames)
+    return rms(all_data)
+
 def transcribe(openai_client: OpenAI, audio_frames: list, sample_rate: int) -> str | None:
+    if mean_rms(audio_frames) < MIN_SPEECH_RMS:
+        print("skipped: low energy")
+        return None
+
     with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as f:
         tmp_path = f.name
 
@@ -222,8 +244,13 @@ def transcribe(openai_client: OpenAI, audio_frames: list, sample_rate: int) -> s
             result = openai_client.audio.transcriptions.create(
                 model="whisper-1",
                 file=audio_file,
+                prompt=WHISPER_PROMPT,
             )
-        return result.text.strip()
+        text = result.text.strip()
+        if text.lower().rstrip("!.") in WHISPER_HALLUCINATIONS:
+            print(f"skipped: hallucination detected ({text!r})")
+            return None
+        return text
     except Exception as e:
         print(f"error: whisper: {e}", file=sys.stderr)
         return None
