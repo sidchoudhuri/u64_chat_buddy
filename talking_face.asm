@@ -6,7 +6,7 @@
 ; $c000       = speak trigger (write 1 to start speaking, bottom ticker)
 ; $c001       = input ready flag (asm sets 1 on Enter, python clears to 0)
 ; $c002       = input length (number of bytes in input buffer)
-; $c003       = music trigger (F2 sets 1, python clears to 0)
+; $c003       = music active flag (F3 toggles 0/1, python records while 1)
 ; $c004       = mode flag (0=KBD, 1=MIC) — python reads this
 ; $c005       = busy flag (1=speaking, 0=idle) — python polls before sending
 ; $c100-$c1ff = bottom text buffer, 0-terminated, in SCREEN CODES (GPT response)
@@ -24,15 +24,19 @@ line10  .word 0
 speak_trigger       = $c000
 input_ready         = $c001
 input_len_addr      = $c002
-music_trigger_addr  = $c003
+music_active_addr   = $c003
 mode_flag_addr      = $c004
 busy_flag_addr      = $c005
 textbuf         = $c100
 inputbuf        = $c200
 
-; mode indicator position (row 0, cols 0-4)
+; mode indicator position (row 0, cols 0-6)
 mode_ind_scr    = screen + (0*40)
 mode_ind_col    = color  + (0*40)
+
+; music indicator position (row 0, cols 33-39)
+mus_ind_scr     = screen + (0*40) + 33
+mus_ind_col     = color  + (0*40) + 33
 
 MODE_KBD        = 0
 MODE_MIC        = 1
@@ -133,7 +137,7 @@ start:
         sta speak_trigger
         sta input_ready
         sta input_len_addr
-        sta music_trigger_addr
+        sta music_active_addr
         sta mode_flag_addr
         sta busy_flag_addr
         sta speaking
@@ -179,6 +183,7 @@ start:
         jsr clear_ticker
         jsr clear_input_line
         jsr draw_mode_indicator
+        jsr draw_music_indicator
         jsr draw_brows_neutral
         jsr set_idle_wait_timer
 
@@ -454,6 +459,40 @@ dmi_kbd_loop:
         bne dmi_kbd_loop
         rts
 
+ind_mus_str:
+        .byte $06           ; F
+        .byte $33           ; 3
+        .byte $1b           ; [
+        .byte $0d           ; M
+        .byte $15           ; U
+        .byte $13           ; S
+        .byte $1d           ; ]
+
+draw_music_indicator:
+        lda music_active_addr
+        beq dmi_mus_off
+        ldx #$00
+dmi_mus_on_loop:
+        lda ind_mus_str,x
+        sta mus_ind_scr,x
+        lda #col_ind_mic_on
+        sta mus_ind_col,x
+        inx
+        cpx #7
+        bne dmi_mus_on_loop
+        rts
+dmi_mus_off:
+        ldx #$00
+dmi_mus_off_loop:
+        lda ind_mus_str,x
+        sta mus_ind_scr,x
+        lda #col_ind_kbd
+        sta mus_ind_col,x
+        inx
+        cpx #7
+        bne dmi_mus_off_loop
+        rts
+
 GETIN           = $ffe4
 ch_cursor       = $a0       ; reverse space as cursor
 
@@ -473,7 +512,7 @@ pi_got_key:
         cmp #$85            ; F1
         beq pi_toggle_mode
 
-        cmp #$89            ; F2
+        cmp #$86            ; F3
         beq pi_music_trigger
 
         lda current_mode
@@ -551,8 +590,10 @@ pi_enter:
         jmp pi_done
 
 pi_music_trigger:
-        lda #$01
-        sta music_trigger_addr
+        lda music_active_addr
+        eor #$01
+        sta music_active_addr
+        jsr draw_music_indicator
         jmp pi_done
 
 pi_toggle_mode:

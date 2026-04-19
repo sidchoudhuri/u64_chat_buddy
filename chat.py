@@ -24,7 +24,7 @@ CONFIG_PATH = Path(__file__).parent / ".c64_config.json"
 SPEAK_TRIGGER_ADDR  = 0xC000
 INPUT_READY_ADDR    = 0xC001
 INPUT_LEN_ADDR      = 0xC002
-MUSIC_TRIGGER_ADDR  = 0xC003
+MUSIC_ACTIVE_ADDR   = 0xC003
 MODE_FLAG_ADDR      = 0xC004
 BUSY_FLAG_ADDR      = 0xC005
 BOT_TEXT_ADDR       = 0xC100
@@ -44,8 +44,6 @@ SILENCE_THRESHOLD   = 1500
 SILENCE_DURATION    = 1.0
 MIN_SPEECH_DURATION = 0.5
 MIN_SPEECH_RMS      = 800
-MUSIC_CLIP_DURATION = 10.0
-
 MODE_KBD = 0
 MODE_MIC = 1
 
@@ -271,10 +269,6 @@ def transcribe(openai_client: OpenAI, audio_frames: list, sample_rate: int) -> s
     finally:
         Path(tmp_path).unlink(missing_ok=True)
 
-def record_clip(stream, duration: float) -> list:
-    chunks = int(duration * MIC_SAMPLE_RATE / MIC_CHUNK)
-    return [stream.read(MIC_CHUNK, exception_on_overflow=False) for _ in range(chunks)]
-
 def transcribe_music(openai_client: OpenAI, frames: list) -> str | None:
     with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as f:
         tmp_path = f.name
@@ -306,11 +300,7 @@ def energy_desc(frames: list) -> str:
 
 def handle_music_clip(openai_client: OpenAI, http: httpx.Client, host: str,
                       history: list, stop_event: threading.Event,
-                      gpt_lock: threading.Lock, stream) -> None:
-    print("recording...")
-    display_on_input_line(http, host, "listening...")
-    frames = record_clip(stream, MUSIC_CLIP_DURATION)
-
+                      gpt_lock: threading.Lock, frames: list) -> None:
     lyrics = transcribe_music(openai_client, frames)
     mood = energy_desc(frames)
 
@@ -386,10 +376,20 @@ def mic_listener(openai_client: OpenAI, http: httpx.Client, host: str,
     print("mic listener started")
 
     while not stop_event.is_set():
-        music = http_readmem(http, host, MUSIC_TRIGGER_ADDR, 1)
+        music = http_readmem(http, host, MUSIC_ACTIVE_ADDR, 1)
         if music and music[0] == 1:
-            http_put(http, host, MUSIC_TRIGGER_ADDR, b"\x00")
-            handle_music_clip(openai_client, http, host, history, stop_event, gpt_lock, stream)
+            frames = []
+            print("recording music...")
+            display_on_input_line(http, host, "recording...")
+            while not stop_event.is_set():
+                data = stream.read(MIC_CHUNK, exception_on_overflow=False)
+                frames.append(data)
+                flag = http_readmem(http, host, MUSIC_ACTIVE_ADDR, 1)
+                if flag is None or flag[0] == 0:
+                    break
+            if frames:
+                handle_music_clip(openai_client, http, host, history,
+                                  stop_event, gpt_lock, frames)
             continue
 
         result = http_readmem(http, host, MODE_FLAG_ADDR, 1)
@@ -481,7 +481,7 @@ def main() -> int:
     stop_event = threading.Event()
 
     print(f"C64 face chat v{VERSION} ({BUILD}). waiting for C64 input. ctrl-c to quit.")
-    print(f"press F1 on C64 to toggle mic mode.\n")
+    print(f"F1: toggle mic  F3: start/stop music recording\n")
 
     with httpx.Client(timeout=TIMEOUT) as http:
         mic_thread = None
