@@ -381,17 +381,6 @@ def mic_listener(openai_client: OpenAI, http: httpx.Client, host: str,
     audio.terminate()
     print("mic listener stopped")
 
-def parse_args():
-    args = sys.argv[1:]
-    prg_path = None
-    while args:
-        if args[0] == "--run-prg" and len(args) > 1:
-            prg_path = args[1]
-            args = args[2:]
-        else:
-            break
-    return prg_path
-
 def main() -> int:
     api_key = os.environ.get("OPENAI_API_KEY")
     if not api_key:
@@ -403,12 +392,14 @@ def main() -> int:
         print("         install with: pip install pyaudio")
 
     host = load_or_ask_host()
-    prg_path = parse_args()
 
-    if prg_path:
-        print(f"loading {prg_path}...")
-        run_prg(host, prg_path)
+    prg_path = Path(__file__).parent / "talking_face.prg"
+    if prg_path.exists():
+        print(f"loading {prg_path.name}...")
+        run_prg(host, str(prg_path))
         time.sleep(1.5)
+    else:
+        print(f"warning: {prg_path.name} not found, skipping")
 
     openai_client = OpenAI(api_key=api_key)
     history = []
