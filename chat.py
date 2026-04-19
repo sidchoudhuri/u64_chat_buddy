@@ -3,6 +3,7 @@ import os
 import sys
 import time
 import json
+import random
 import threading
 import tempfile
 import wave
@@ -44,6 +45,11 @@ SILENCE_THRESHOLD   = 1500
 SILENCE_DURATION    = 1.0
 MIN_SPEECH_DURATION = 0.5
 MIN_SPEECH_RMS      = 800
+MUSIC_CHUNK_DURATION    = 8.0
+MUSIC_COMMENT_PROB      = 0.35
+MUSIC_COMMENT_COOLDOWN  = 20.0
+MUSIC_ENERGY_CHANGE     = 0.4
+
 MODE_KBD = 0
 MODE_MIC = 1
 
@@ -324,6 +330,9 @@ def handle_music_clip(openai_client: OpenAI, http: httpx.Client, host: str,
     scroll_thread.join(timeout=1.0)
     clear_input_line_display(http, host)
 
+    if http_readmem(http, host, MUSIC_ACTIVE_ADDR, 1) == b"\x01":
+        display_on_input_line(http, host, "recording...")
+
 def process_input(user_input: str, openai_client: OpenAI,
                   http: httpx.Client, host: str, history: list,
                   stop_event: threading.Event) -> None:
@@ -378,18 +387,45 @@ def mic_listener(openai_client: OpenAI, http: httpx.Client, host: str,
     while not stop_event.is_set():
         music = http_readmem(http, host, MUSIC_ACTIVE_ADDR, 1)
         if music and music[0] == 1:
-            frames = []
             print("recording music...")
             display_on_input_line(http, host, "recording...")
+            chunk_frames = []
+            chunk_size = int(MUSIC_CHUNK_DURATION * MIC_SAMPLE_RATE / MIC_CHUNK)
+            last_energy = None
+            last_comment_time = 0.0
+
             while not stop_event.is_set():
                 data = stream.read(MIC_CHUNK, exception_on_overflow=False)
-                frames.append(data)
+                chunk_frames.append(data)
+
                 flag = http_readmem(http, host, MUSIC_ACTIVE_ADDR, 1)
                 if flag is None or flag[0] == 0:
                     break
-            if frames:
-                handle_music_clip(openai_client, http, host, history,
-                                  stop_event, gpt_lock, frames)
+
+                if len(chunk_frames) < chunk_size:
+                    continue
+
+                energy = mean_rms(chunk_frames)
+                now = time.time()
+
+                if energy > MIN_SPEECH_RMS and now - last_comment_time >= MUSIC_COMMENT_COOLDOWN:
+                    prob = MUSIC_COMMENT_PROB
+                    if last_energy is not None:
+                        change = abs(energy - last_energy) / max(last_energy, 1)
+                        if change > MUSIC_ENERGY_CHANGE:
+                            prob = min(prob * 2, 0.8)
+                    if random.random() < prob:
+                        last_comment_time = now
+                        frames_copy = list(chunk_frames)
+                        threading.Thread(
+                            target=handle_music_clip,
+                            args=(openai_client, http, host, history,
+                                  stop_event, gpt_lock, frames_copy),
+                            daemon=True,
+                        ).start()
+
+                last_energy = energy
+                chunk_frames = []
             continue
 
         result = http_readmem(http, host, MODE_FLAG_ADDR, 1)
