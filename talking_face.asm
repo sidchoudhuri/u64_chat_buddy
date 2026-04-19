@@ -32,11 +32,9 @@ inputbuf        = $c200
 mode_ind_scr    = screen + (0*40)
 mode_ind_col    = color  + (0*40)
 
-; mode constants
 MODE_KBD        = 0
 MODE_MIC        = 1
 
-; colors
 col_ind_kbd     = $0e       ; light blue
 col_ind_mic_on  = $02       ; red
 
@@ -162,7 +160,6 @@ start:
         sta input_len
         sta input_waiting
         sta current_mode
-        ; write initial mode to $c004
         lda #MODE_KBD
         sta mode_flag_addr
 
@@ -400,8 +397,6 @@ cil1:
         rts
 
 ; --- mode indicator ---
-; row 0 cols 0-7: F1[KBD] or F1[MIC]
-; in MIC mode, MIC chars blink red, rest stay light blue
 
 ; screen codes for F1[KBD]
 ind_kbd_str:
@@ -427,13 +422,10 @@ draw_mode_indicator:
         lda current_mode
         beq dmi_kbd
 
-        ; MIC mode - draw all 7 chars, MIC portion in red
         ldx #$00
 dmi_mic_loop:
         lda ind_mic_str,x
         sta mode_ind_scr,x
-        ; cols 0-1 (F,1) stay light blue
-        ; cols 2-6 ([,M,I,C,]) start red
         cpx #2
         bcc dmi_mic_blue
         lda #col_ind_mic_on
@@ -459,17 +451,10 @@ dmi_kbd_loop:
         bne dmi_kbd_loop
         rts
 
-; reads keystrokes via GETIN ($ffe4)
-; echoes to row 1 with scrolling window
-; on Enter: writes length to $c002, sets $c001=1, waits for python to clear
-; on DEL: removes last character
-; max 254 characters
-
 GETIN           = $ffe4
 ch_cursor       = $a0       ; reverse space as cursor
 
 poll_input:
-        ; if waiting for python to read, don't accept new input
         lda input_waiting
         beq pi_not_waiting
         jmp pi_done
@@ -480,21 +465,17 @@ pi_not_waiting:
         jmp pi_done
 pi_got_key:
 
-        ; save keypress
         sta pi_key
 
-        ; F1 key toggles mode (PETSCII $85)
-        cmp #$85
+        cmp #$85            ; F1
         beq pi_toggle_mode
 
-        ; in MIC mode, ignore all other keyboard input
         lda current_mode
         cmp #MODE_MIC
         bne pi_kbd_mode
         jmp pi_done
 pi_kbd_mode:
 
-        ; restore key
         lda pi_key
 
         cmp #$0d            ; Enter
@@ -503,7 +484,6 @@ pi_kbd_mode:
         cmp #$14            ; DEL
         beq pi_delete
 
-        ; only accept if input_len < 254
         pha
         lda input_len
         cmp #254
@@ -541,7 +521,6 @@ pi_delete:
 
         dec input_len
 
-        ; adjust scroll if needed
         lda input_scroll
         beq pi_del_no_scroll
         lda input_len
@@ -554,20 +533,14 @@ pi_del_no_scroll:
 
 pi_enter:
         lda input_len
-        beq pi_done         ; nothing to submit
+        beq pi_done
 
-        ; write length to $c002
         sta input_len_addr
 
-        ; set ready flag
         lda #$01
         sta input_ready
-
-        ; set waiting flag so we stop accepting input
-        lda #$01
         sta input_waiting
 
-        ; clear input line display
         jsr clear_input_line
         jmp pi_done
 
@@ -581,13 +554,11 @@ pi_toggle_mode:
         jmp pi_done
 
 pi_done:
-        ; check if python has cleared the ready flag (read our input)
         lda input_waiting
         beq pi_end
         lda input_ready
         bne pi_end
 
-        ; python cleared the flag - reset input
         lda #$00
         sta input_len
         sta input_scroll
@@ -599,7 +570,6 @@ pi_end:
         rts
 
 redraw_input_line:
-        ; update scroll: if input_len > 40, scroll = input_len - 40
         lda input_len
         cmp #40
         bcc ril_no_scroll
@@ -612,13 +582,11 @@ ril_no_scroll:
         sta input_scroll
 
 ril_draw:
-        ; draw 40 chars from inputbuf+input_scroll to row 1
         ldy input_scroll
         ldx #$00
 ril_loop:
         cpx #40
         beq ril_cursor
-        ; have we reached end of typed text?
         cpy input_len
         beq ril_fill_rest
         lda inputbuf,y
@@ -630,7 +598,6 @@ ril_loop:
         jmp ril_loop
 
 ril_fill_rest:
-        ; fill remaining with spaces
         lda #ch_space
         sta top_ticker_scr,x
         lda #col_top_text
@@ -642,7 +609,6 @@ ril_fill_rest:
 
 ril_cursor:
 ril_cursor_pos:
-        ; draw cursor at current end position (capped at col 39)
         lda input_len
         sec
         sbc input_scroll
@@ -657,7 +623,7 @@ ril_cur_ok:
         sta top_ticker_col,x
         rts
 
-; --- bottom ticker / speech (unchanged) ---
+; --- bottom ticker ---
 
 maybe_start_speaking:
         lda speak_trigger
@@ -1204,12 +1170,9 @@ sefc_left:
         sta targety
         rts
 
-; set eye target based on cursor position in input line
-; maps input_len position to left/center/right same as bottom ticker
-; only called when not speaking
 set_eyes_from_input:
         lda input_len
-        beq sefi_center     ; nothing typed, look center
+        beq sefi_center
 
         ; visible cursor col = input_len - input_scroll, capped at 39
         lda input_len

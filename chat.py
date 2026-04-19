@@ -32,17 +32,17 @@ INPUT_BUF_ADDR      = 0xC200
 TIMEOUT             = 5.0
 POLL_INTERVAL       = 0.05
 MAX_RESPONSE_CHARS  = 254
-BUSY_POLL_INTERVAL  = 0.1     # how often to check busy flag
-SCROLL_INTERVAL     = 0.12   # seconds between scroll steps on input line
+BUSY_POLL_INTERVAL  = 0.1
+SCROLL_INTERVAL     = 0.12
 
 # mic settings
 MIC_SAMPLE_RATE     = 16000
 MIC_CHANNELS        = 1
 MIC_CHUNK           = 1024
-SILENCE_THRESHOLD   = 1500   # raised from 500 — filters ambient noise/hum
+SILENCE_THRESHOLD   = 1500
 SILENCE_DURATION    = 1.0
-MIN_SPEECH_DURATION = 0.5    # raised from 0.3 — avoids submitting noise bursts
-MIN_SPEECH_RMS      = 800    # mean energy gate: whole clip must exceed this
+MIN_SPEECH_DURATION = 0.5
+MIN_SPEECH_RMS      = 800
 
 MODE_KBD = 0
 MODE_MIC = 1
@@ -134,7 +134,6 @@ def http_readmem(client: httpx.Client, host: str,
 
 def wait_until_not_busy(client: httpx.Client, host: str,
                         stop_event: threading.Event) -> bool:
-    """Wait until busy flag is 0. Returns False if stop_event is set."""
     while not stop_event.is_set():
         result = http_readmem(client, host, BUSY_FLAG_ADDR, 1)
         if result is not None and result[0] == 0:
@@ -165,7 +164,6 @@ INPUT_LINE_COL_ADDR = 0xD828
 INPUT_LINE_COLOR    = 0x0e     # light blue, same as col_top_text
 
 def display_on_input_line(client: httpx.Client, host: str, text: str) -> None:
-    """Write text directly to row 1 screen RAM, display only, no flags touched."""
     codes = bytearray()
     for ch in text.upper():
         if 'A' <= ch <= 'Z':
@@ -177,7 +175,6 @@ def display_on_input_line(client: httpx.Client, host: str, text: str) -> None:
         else:
             codes.append(0x20)
 
-    # pad or truncate to exactly 40 chars
     codes = codes[:40]
     while len(codes) < 40:
         codes.append(0x20)
@@ -187,7 +184,6 @@ def display_on_input_line(client: httpx.Client, host: str, text: str) -> None:
     http_put(client, host, INPUT_LINE_COL_ADDR, color)
 
 def clear_input_line_display(client: httpx.Client, host: str) -> None:
-    """Clear row 1 screen RAM."""
     http_put(client, host, INPUT_LINE_SCR_ADDR, bytes([0x20] * 40))
     http_put(client, host, INPUT_LINE_COL_ADDR, bytes([INPUT_LINE_COLOR] * 40))
 
@@ -273,7 +269,6 @@ def transcribe(openai_client: OpenAI, audio_frames: list, sample_rate: int) -> s
 def process_input(user_input: str, openai_client: OpenAI,
                   http: httpx.Client, host: str, history: list,
                   stop_event: threading.Event) -> None:
-    # wait for face to finish speaking before sending new response
     if not wait_until_not_busy(http, host, stop_event):
         return
 
@@ -444,13 +439,11 @@ def main() -> int:
                     time.sleep(POLL_INTERVAL)
                     continue
 
-                # check mode — mic thread handles MIC mode
                 mode = http_readmem(http, host, MODE_FLAG_ADDR, 1)
                 if mode and mode[0] == MODE_MIC:
                     time.sleep(POLL_INTERVAL)
                     continue
 
-                # KBD mode
                 len_result = http_readmem(http, host, INPUT_LEN_ADDR, 1)
                 if len_result is None or len_result[0] == 0:
                     http_put(http, host, INPUT_READY_ADDR, b"\x00")
