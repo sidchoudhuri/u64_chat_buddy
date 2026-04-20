@@ -2,16 +2,16 @@
 
 This README is a quick map of the main parts of the `talking_face.asm` file that you can adjust.
 
-- [Eyes](https://github.com/sidchoudhuri/C64_Chat_Buddy/main/README.md#eyes-1)
-- [Mouth](https://github.com/sidchoudhuri/C64_Chat_Buddy/main/README.md#mouth)
-- [Scrolling Text](https://github.com/sidchoudhuri/C64_Chat_Buddy/main/README.md#scrolling-text-1)
-- [Speech / Sound](https://github.com/sidchoudhuri/C64_Chat_Buddy/main/README.md#speech--sound-1)
-- [Video Timing](https://github.com/sidchoudhuri/C64_Chat_Buddy/main/README.md#video-timing-1)
-- [Mic Mode & Transcription](https://github.com/sidchoudhuri/C64_Chat_Buddy/main/README.md#mic-mode-and-transcription)
-- [Music Mode](https://github.com/sidchoudhuri/C64_Chat_Buddy/main/README.md#music-mode)
-- [Problems & Solutions](https://github.com/sidchoudhuri/C64_Chat_Buddy/main/README.md#scrolling-text-1)
-- [Build / Test Cycle](https://github.com/sidchoudhuri/C64_Chat_Buddy/main/README.md#build--test-cycle-1)
-- [Safe Things To Tweak](https://github.com/sidchoudhuri/C64_Chat_Buddy/main/README.md#safe-first-things-to-tweak)
+- [Eyes](https://github.com/sidchoudhuri/U64_Chat_Buddy#eyes)
+- [Mouth](https://github.com/sidchoudhuri/U64_Chat_Buddy#mouth)
+- [Scrolling Text](https://github.com/sidchoudhuri/U64_Chat_Buddy#scrolling-text)
+- [Speech / Sound](https://github.com/sidchoudhuri/C64_Chat_Buddy#speech--sound)
+- [Video Timing](https://github.com/sidchoudhuri/C64_Chat_Buddy#video-timing)
+- [Mic Mode & Transcription](https://github.com/sidchoudhuri/C64_Chat_Buddy#mic-mode-and-transcription)
+- [Music Mode](https://github.com/sidchoudhuri/C64_Chat_Buddy#music-mode)
+- [Problems & Solutions](https://github.com/sidchoudhuri/C64_Chat_Buddy#scrolling-text)
+- [Build / Test Cycle](https://github.com/sidchoudhuri/C64_Chat_Buddy#build--test-cycle)
+- [Safe Things To Tweak](https://github.com/sidchoudhuri/C64_Chat_Buddy#safe-first-things-to-tweak)
 
 ## Eyes
 
