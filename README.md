@@ -2,7 +2,7 @@
 
 This README is a quick map of the main parts of the `talking_face.asm` file that you can adjust.
 
-- [Eyes](https://github.com/sidchoudhuri/U64_Chat_Buddy#eyes)
+- [Eyes](#eyes)
 - [Mouth](https://github.com/sidchoudhuri/U64_Chat_Buddy#mouth)
 - [Scrolling Text](https://github.com/sidchoudhuri/U64_Chat_Buddy#scrolling-text)
 - [Speech / Sound](https://github.com/sidchoudhuri/C64_Chat_Buddy#speech--sound)
