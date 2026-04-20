@@ -3,15 +3,15 @@
 This README is a quick map of the main parts of the `talking_face.asm` file that you can adjust.
 
 - [Eyes](#eyes)
-- [Mouth](https://github.com/sidchoudhuri/U64_Chat_Buddy#mouth)
-- [Scrolling Text](https://github.com/sidchoudhuri/U64_Chat_Buddy#scrolling-text)
-- [Speech / Sound](https://github.com/sidchoudhuri/C64_Chat_Buddy#speech--sound)
-- [Video Timing](https://github.com/sidchoudhuri/C64_Chat_Buddy#video-timing)
-- [Mic Mode & Transcription](https://github.com/sidchoudhuri/C64_Chat_Buddy#mic-mode-and-transcription)
-- [Music Mode](https://github.com/sidchoudhuri/C64_Chat_Buddy#music-mode)
-- [Problems & Solutions](https://github.com/sidchoudhuri/C64_Chat_Buddy#scrolling-text)
-- [Build / Test Cycle](https://github.com/sidchoudhuri/C64_Chat_Buddy#build--test-cycle)
-- [Safe Things To Tweak](https://github.com/sidchoudhuri/C64_Chat_Buddy#safe-first-things-to-tweak)
+- [Mouth](#mouth)
+- [Scrolling Text](#scrolling-text)
+- [Speech / Sound](#speech--sound)
+- [Video Timing](#video-timing)
+- [Mic Mode & Transcription](#mic-mode-and-transcription)
+- [Music Mode](#music-mode)
+- [Problems & Solutions](#scrolling-text)
+- [Build / Test Cycle](#build--test-cycle)
+- [Safe Things To Tweak](#safe-first-things-to-tweak)
 
 ## Eyes
 
