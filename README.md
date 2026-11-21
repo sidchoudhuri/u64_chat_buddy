@@ -21,7 +21,7 @@ This README is a quick map of the main parts of the `talking_face.asm` file that
 [chat-buddy-releases](https://github.com/sidchoudhuri/chat-buddy-releases/releases):
 
 - **Mac:** `Chat-Buddy-<version>-arm64.dmg` for Apple silicon (M1 and later), `Chat-Buddy-<version>-intel.dmg` for Intel Macs. Open it and drag Chat Buddy into Applications.
-- **Windows:** `Chat-Buddy-Setup-<version>.exe`, an installer with a Start-menu entry.
+- **Windows:** `Chat-Buddy-<version>-Windows-Setup.exe`, an installer with a Start-menu entry.
 
 The first time you open it, it walks you through setup:
 

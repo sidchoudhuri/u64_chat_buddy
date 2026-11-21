@@ -50,7 +50,7 @@
     "nsis": {
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
-      "artifactName": "Chat-Buddy-Setup-${version}.exe"
+      "artifactName": "Chat-Buddy-${version}-Windows-Setup.exe"
     },
     "directories": {
       "output": "dist",
