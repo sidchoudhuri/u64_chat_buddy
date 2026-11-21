@@ -17,7 +17,9 @@ on the C64:
   F3          music mode on/off: the face listens along and comments
 
 in the app:
-  Save screenshot…   a picture of the C64 screen (needs the character ROM)
+  Live view          the C64's screen, from the Ultimate's video stream
+                     (wired Ethernet, UDP port 11000)
+  Save screenshot…   saves what the live view shows
   Help > Check for Updates…`;
 
 function show(view) {
@@ -59,6 +61,7 @@ async function refresh() {
   $('version').textContent = cfg.version;
   $('host').value = cfg.host || '';
   $('load-face').checked = cfg.loadFace !== false;
+  $('live-on').checked = cfg.live !== false;
   $('heroku-app').value = cfg.discord?.app || 'lexi-persimmons';
   $('discord-on').checked = Boolean(cfg.discord?.enabled);
   setStatus($('discord-state'), cfg.hasDiscordUrl ? true : null, cfg.hasDiscordUrl ? 'Database address saved' : 'No database address yet');
@@ -176,9 +179,8 @@ function setRunning(on) {
   $('btn-setup').disabled = on;
   if (!on) { c64Ok = null; for (const id of ['m-kbd', 'm-mic', 'm-music', 'm-speak']) $(id).classList.remove('on'); }
   $('foot-msg').textContent = on ? 'Running: type on the C64, or press F1 to talk.' : '';
-  if (!$('screen').classList.contains('has-image')) {
-    $('screen-msg').textContent = on ? 'Running. Type on the C64, or press F1 and talk.' : 'Press Start, then type on the C64 or press F1 to talk.';
-  }
+  if (on) { if (cfg.live !== false) liveStart(); else screenMsg('Live view is off: switch it on above.'); }
+  else screenOff('Press Start, then type on the C64 or press F1 to talk.');
   topStatus();
 }
 
@@ -208,18 +210,109 @@ $('btn-start').onclick = async () => {
   await window.buddy.start();
 };
 
+// ---------- the C64's screen: the Ultimate's live video (as in Viz), or drawn from screen memory ----------
+
+// the C64's 16 colours (the same palette as Viz's live view)
+const PAL = [[0x00,0x00,0x00],[0xff,0xff,0xff],[0x8c,0x32,0x3d],[0x66,0xbf,0xb3],[0x8e,0x36,0xa1],[0x4a,0xa6,0x48],[0x32,0x2d,0xab],[0xcd,0xd2,0x56],
+             [0x8f,0x50,0x1a],[0x53,0x3d,0x01],[0xbd,0x63,0x6e],[0x4e,0x4e,0x4e],[0x76,0x76,0x76],[0x8c,0xe9,0x8b],[0x6b,0x66,0xe4],[0xa3,0xa3,0xa3]];
+const canvas = $('live-canvas'), ctx = canvas.getContext('2d');
+let image = null, liveOn = false, memOn = false;
+
+function screenMsg(text, offerFallback = false) {
+  $('screen').classList.remove('has-image');
+  canvas.hidden = true;
+  $('mem-img').hidden = true;
+  $('screen-box').hidden = false;
+  $('screen-msg').textContent = text;
+  $('btn-fallback').hidden = !offerFallback;
+}
+
+function showPicture(el) {
+  $('screen').classList.add('has-image');
+  $('screen-box').hidden = true;
+  canvas.hidden = el !== canvas;
+  $('mem-img').hidden = el !== $('mem-img');
+}
+
+async function liveStart() {
+  if (liveOn || memOn) return;
+  liveOn = true;
+  screenMsg('Asking the Ultimate for its picture…');
+  const r = await window.buddy.liveStart();
+  if (!r || !r.ok) {
+    liveOn = false;
+    screenMsg(`${(r && r.error) || "The live view didn't start."}\n\nDraw the screen from the C64's screen memory instead? It's less smooth.`, true);
+  }
+}
+
+async function screenOff(msg) {
+  if (liveOn) { liveOn = false; await window.buddy.liveStop(); }
+  if (memOn) { memOn = false; await window.buddy.screenStop(); }
+  screenMsg(msg);
+}
+
+window.buddy.on('live:status', st => {
+  if (!liveOn) return;
+  if (st.state === 'waiting') screenMsg('Waiting for the picture…');
+  if (st.state === 'nothing') screenMsg(`${st.message}\n\nDraw the screen from the C64's screen memory instead? It's less smooth.`, true);
+});
+
+window.buddy.on('live:frame', f => {
+  if (!liveOn) return;
+  const bytes = new Uint8Array(f.data.buffer || f.data, f.data.byteOffset || 0, f.data.byteLength || f.data.length);
+  if (canvas.width !== f.w || canvas.height !== f.h || !image) { canvas.width = f.w; canvas.height = f.h; image = ctx.createImageData(f.w, f.h); }
+  const px = image.data;
+  for (let i = 0, o = 0; i < bytes.length; i++, o += 8) {
+    const lo = PAL[bytes[i] & 15], hi = PAL[bytes[i] >> 4];   // two pixels a byte, low nibble first
+    px[o] = lo[0]; px[o + 1] = lo[1]; px[o + 2] = lo[2]; px[o + 3] = 255;
+    px[o + 4] = hi[0]; px[o + 5] = hi[1]; px[o + 6] = hi[2]; px[o + 7] = 255;
+  }
+  ctx.putImageData(image, 0, 0);
+  showPicture(canvas);
+});
+
+$('btn-fallback').onclick = async () => {
+  if (liveOn) { liveOn = false; await window.buddy.liveStop(); }
+  const r = await window.buddy.screenStart();
+  if (!r.ok) return screenMsg(r.error);
+  memOn = true;
+  screenMsg('Drawing the screen from memory…');
+};
+
+window.buddy.on('screen:frame', ev => {
+  if (!memOn) return;
+  if (ev.png) { $('mem-img').src = `data:image/png;base64,${ev.png}`; showPicture($('mem-img')); }
+  else if (ev.error) screenMsg(ev.error);
+  else if (ev.type === 'result' && !ev.ok) { memOn = false; screenMsg(ev.detail); }
+});
+
+$('live-on').onchange = async () => {
+  const on = $('live-on').checked;
+  await window.buddy.saveSettings({ live: on });
+  cfg.live = on;
+  if (!running) return;
+  if (on) liveStart();
+  else screenOff('Live view is off: switch it on above.');
+};
+
+// Save screenshot: the picture on screen if there is one, otherwise the engine draws one.
 $('btn-snap').onclick = async () => {
-  const r = await window.buddy.snapshot();
+  let r;
+  if (!canvas.hidden) {
+    const big = document.createElement('canvas');
+    big.width = canvas.width * 2; big.height = canvas.height * 2;
+    const bctx = big.getContext('2d');
+    bctx.imageSmoothingEnabled = false;
+    bctx.drawImage(canvas, 0, 0, big.width, big.height);
+    r = await window.buddy.savePng(big.toDataURL('image/png'));
+  } else if (!$('mem-img').hidden) {
+    r = await window.buddy.savePng($('mem-img').src);
+  } else {
+    r = await window.buddy.snapshot();
+    if (r.ok && r.image && !running) { $('mem-img').src = r.image; showPicture($('mem-img')); }
+  }
   if (r.canceled) return;
-  if (!r.ok) { $('foot-msg').textContent = r.detail; return; }
-  const s = $('screen');
-  s.classList.add('has-image');
-  s.innerHTML = '';
-  const img = document.createElement('img');
-  img.src = r.image;
-  img.alt = 'C64 screen';
-  s.append(img);
-  $('foot-msg').textContent = `Saved ${r.detail}`;
+  $('foot-msg').textContent = r.ok ? `Saved ${r.detail}` : r.detail;
 };
 
 // ---------- start ----------

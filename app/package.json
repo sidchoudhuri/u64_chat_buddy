@@ -1,7 +1,7 @@
 {
   "name": "chat-buddy",
   "productName": "Chat Buddy",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "The C64 talking face that chats through ChatGPT, on your Ultimate 64 or C64 Ultimate",
   "author": "Sid Choudhuri (m0nde)",
   "private": true,
@@ -21,6 +21,7 @@
     "files": [
       "main.js",
       "update-main.js",
+      "liveview-main.js",
       "preload.js",
       "ui/**/*",
       "package.json"

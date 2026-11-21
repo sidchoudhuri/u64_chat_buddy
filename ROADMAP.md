@@ -3,7 +3,8 @@
 ## Now
 
 - [ ] First Chat Buddy release: create the `chat-buddy-releases` repo, add the `RELEASES_TOKEN` secret, merge, and check the Mac and Windows builds
-- [ ] Test the app on a real Mac and Windows PC with the Ultimate: setup, Start, keyboard, F1 mic, F3 music, screenshots, updates
+- [ ] Test the app on a real Mac and Windows PC with the Ultimate: setup, Start, keyboard, F1 mic, F3 music, live view, screenshots
+- [ ] Check for Updates from 1.0.0 to 1.0.1 on Mac and Windows
 
 - [ ] Test the Discord bridge on the real C64 with Lexi: screenshot and GIF modes, offline notice
 - [ ] Check the screenshot font and colours with `python3 discord_bridge.py --snapshot screen.png`

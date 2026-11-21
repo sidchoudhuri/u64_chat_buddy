@@ -1,5 +1,11 @@
 # u64_chat_buddy devlog
 
+## 2026-11-21 - Chat Buddy 1.0.1
+
+- **Live view:** the C64's screen now shows in the app while Chat Buddy runs, straight from the Ultimate's own video stream, the same way as Viz. Switch it off with the "Live view from the Ultimate" box.
+- **If no picture arrives** (the Ultimate only streams over wired Ethernet, and your firewall must allow UDP port 11000), Chat Buddy says why and offers to draw the screen from the C64's screen memory instead. That needs the character ROM from Setup.
+- **Save screenshot** saves what the live view shows, so it no longer needs the character ROM.
+
 ## 2026-11-20 - Chat Buddy 1.0.0
 
 The talking face is now an app, **Chat Buddy**, for Mac (Apple silicon and Intel) and Windows.
