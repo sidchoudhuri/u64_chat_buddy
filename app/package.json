@@ -41,7 +41,7 @@
       }
     },
     "dmg": {
-      "artifactName": "Chat-Buddy-${version}-${arch}.dmg"
+      "artifactName": "Chat-Buddy-${version}-arm64.dmg"
     },
     "win": {
       "target": [{ "target": "nsis", "arch": ["x64"] }],

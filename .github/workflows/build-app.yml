@@ -44,12 +44,15 @@ jobs:
     strategy:
       matrix:
         include:
-          - os: macos-latest       # Apple silicon
+          - os: macos-latest       # Apple silicon: Chat-Buddy-<version>-arm64.dmg
             target: --mac --arm64
-          - os: macos-15-intel     # Intel Macs
+            dmg: arm64
+          - os: macos-15-intel     # Intel Macs: Chat-Buddy-<version>-intel.dmg
             target: --mac --x64
+            dmg: intel
           - os: windows-latest
             target: --win
+            dmg: ''
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -76,9 +79,14 @@ jobs:
           cache-dependency-path: app/package-lock.json
       - name: Build the app
         working-directory: app
+        shell: bash
         run: |
           npm ci
-          npx electron-builder ${{ matrix.target }} --publish never
+          if [ -n "${{ matrix.dmg }}" ]; then
+            npx electron-builder ${{ matrix.target }} --publish never -c.dmg.artifactName='Chat-Buddy-${version}-${{ matrix.dmg }}.${ext}'
+          else
+            npx electron-builder ${{ matrix.target }} --publish never
+          fi
       - uses: actions/upload-artifact@v4
         with:
           name: chat-buddy-${{ matrix.os }}
