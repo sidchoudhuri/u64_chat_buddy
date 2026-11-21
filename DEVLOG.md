@@ -1,5 +1,13 @@
 # u64_chat_buddy devlog
 
+## 2026-11-20 - Discord bridge 0.2.1
+
+Posting a GIF to Discord for every local exchange was far too much. Lexi now shows C64 activity in a single live message that updates in place, so the bridge sends less:
+- keyboard and mic exchanges: one screenshot, no GIF
+- music comments: text only, with no screen capture at all
+
+Discord-asked questions still get a screenshot or GIF as before.
+
 ## 2026-11-20 - Discord bridge 0.2.0, chat.py 0.4.5
 
 **The bridge now does everything chat.py does.** With 0.1.0 running, pressing F1 switched the C64 to MIC but nothing was listening, because the mic, music and keyboard handling only lived in `chat.py`. Now the bridge runs those same listeners, so typing on the C64, F1 mic mode and F3 music mode all work while it's connected to Discord. `chat.py` stays the version without Discord.

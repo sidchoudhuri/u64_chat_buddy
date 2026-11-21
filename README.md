@@ -378,9 +378,9 @@ The bridge also runs `chat.py`'s own listeners, so one script does it all:
 
 `chat.py` is the same thing without Discord. Both talk to ChatGPT with the C64 prompt and need `OPENAI_API_KEY`. Without the key, the bridge still does the Discord side and says the keyboard, mic and music listeners are off.
 
-What happens on the C64 shows up in Discord as well, in every channel set to the commodore 64 personality with chat mode on:
-- **F1/F3 switches:** Lexi posts "C64 mic mode ON (F1)", "C64 music listening ON (F3)" and so on, and her status line shows the current mode, e.g. `Watching for Lexi · C64: MIC + MUSIC`.
-- **Local conversations:** keyboard questions, mic questions and music comments are posted with the screenshot or GIF, whichever mode that channel uses.
+What happens on the C64 shows up in Discord too:
+- **Status line:** Lexi's shows the current mode while the bridge runs, e.g. `Watching for Lexi · C64: MIC + MUSIC`.
+- **C64 live message:** in channels where it's switched on (`lexi c64 live on`), Lexi keeps one message up to date instead of posting every exchange. It shows the mode, the latest screenshot from a keyboard or mic exchange, and the last few lines said. Music comments are sent as text only.
 
 Only one conversation uses the C64 at a time. A Discord message waits while the face is answering a mic question, and the other way round.
 

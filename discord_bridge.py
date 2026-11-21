@@ -28,7 +28,7 @@ from PIL import Image
 
 import chat
 
-VERSION = "0.2.0"
+VERSION = "0.2.1"
 BUILD   = "2026-11-20-1"
 
 HEARTBEAT_INTERVAL  = 5.0      # seconds between "bridge is alive" check-ins
@@ -393,20 +393,19 @@ def watch_modes(stop: threading.Event) -> None:
 
 
 def on_local_reply(user_input: str, reply: str) -> None:
-    """chat.py's reply hook: capture the face saying it and post it to Discord (PNG and GIF)."""
-    with httpx.Client(timeout=chat.TIMEOUT) as http:
-        if user_input.startswith("[music]"):
-            source, question = "music", user_input[len("[music]"):].strip()
-        else:
-            mode = chat.http_readmem(http, state["host"], chat.MODE_FLAG_ADDR, 1)
-            source = "mic" if mode and mode[0] == chat.MODE_MIC else "keyboard"
-            question = user_input
-        frames = capture_speech(http, state["host"], True)
-    if not frames:
+    """chat.py's reply hook: post the exchange to Lexi's C64 live message.
+    Keyboard and mic exchanges include a screenshot; music comments are text only."""
+    if user_input.startswith("[music]"):
+        insert_event(kind="exchange", source="music",
+                     question=plain(user_input[len("[music]"):].strip()), reply=plain(reply))
+        print("posted music comment to Discord")
         return
-    png = to_png(best_screenshot(frames), state["chargen"])
-    gif = to_gif(frames, state["chargen"])
-    insert_event(kind="exchange", source=source, question=plain(question), reply=plain(reply), png=png, gif=gif)
+    with httpx.Client(timeout=chat.TIMEOUT) as http:
+        mode = chat.http_readmem(http, state["host"], chat.MODE_FLAG_ADDR, 1)
+        source = "mic" if mode and mode[0] == chat.MODE_MIC else "keyboard"
+        frames = capture_speech(http, state["host"], False)
+    png = to_png(best_screenshot(frames), state["chargen"]) if frames else None
+    insert_event(kind="exchange", source=source, question=plain(user_input), reply=plain(reply), png=png)
     print(f"posted {source} exchange to Discord")
 
 
