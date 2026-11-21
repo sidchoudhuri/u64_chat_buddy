@@ -15,6 +15,8 @@ contextBridge.exposeInMainWorld('buddy', {
   findChargen: () => ipcRenderer.invoke('chargen:find'),
   pickChargen: () => ipcRenderer.invoke('chargen:pick'),
   start: () => ipcRenderer.invoke('engine:start'),
+  micStatus: () => ipcRenderer.invoke('mic:status'),
+  micSettings: () => ipcRenderer.invoke('mic:settings'),
   stop: () => ipcRenderer.invoke('engine:stop'),
   snapshot: () => ipcRenderer.invoke('engine:snapshot'),
   liveStart: () => ipcRenderer.invoke('live:start'),
