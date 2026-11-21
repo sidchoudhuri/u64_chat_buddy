@@ -1,5 +1,15 @@
 # u64_chat_buddy devlog
 
+## 2026-11-20 - Chat Buddy 1.0.0
+
+The talking face is now an app, **Chat Buddy**, for Mac (Apple silicon and Intel) and Windows.
+
+- **Setup that walks you through it:** your Ultimate's IP address (with a test button), your OpenAI key (kept in the system keychain) and, optionally, the C64 character ROM from VICE for screenshots.
+- **Start and talk:** the talking face is built in and loads onto the C64. Type on the C64, press F1 to talk, or F3 for music mode, the same as `chat.py`.
+- **Watch it in the app:** the conversation appears as it happens, with the C64's mode (keyboard, mic, music, speaking) and a Save screenshot button.
+- **Nothing else to install:** the Python part comes inside the app.
+- **Updates itself:** it checks for new versions on launch and from Check for Updates….
+
 ## 2026-11-20 - Discord bridge 0.2.2
 
 Lexi now shows all the C64's pictures in one live message per channel, which follows that channel's screenshot or GIF setting. So keyboard and mic exchanges send both a screenshot and a GIF again. Music comments stay text only.
