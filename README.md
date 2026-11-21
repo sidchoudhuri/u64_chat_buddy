@@ -370,6 +370,20 @@ Lexi runs on Heroku and can't reach the C64 on your home network, so the two mee
 
 The bridge checks in every few seconds. If Lexi hasn't heard from it for 20 seconds she posts the reply as text with "the C64 is offline".
 
+### Everything chat.py does, too
+The bridge also runs `chat.py`'s own listeners, so one script does it all:
+- typing on the C64 keyboard
+- **F1** mic mode
+- **F3** music mode
+
+`chat.py` is the same thing without Discord. Both talk to ChatGPT with the C64 prompt and need `OPENAI_API_KEY`. Without the key, the bridge still does the Discord side and says the keyboard, mic and music listeners are off.
+
+What happens on the C64 shows up in Discord as well, in every channel set to the commodore 64 personality with chat mode on:
+- **F1/F3 switches:** Lexi posts "C64 mic mode ON (F1)", "C64 music listening ON (F3)" and so on, and her status line shows the current mode, e.g. `Watching for Lexi · C64: MIC + MUSIC`.
+- **Local conversations:** keyboard questions, mic questions and music comments are posted with the screenshot or GIF, whichever mode that channel uses.
+
+Only one conversation uses the C64 at a time. A Discord message waits while the face is answering a mic question, and the other way round.
+
 Your computer only makes outgoing connections to the database. Nothing needs port forwarding, and the C64 isn't exposed to the internet.
 
 ### Screenshots
@@ -382,7 +396,8 @@ Switch between them in Discord with `lexi personality commodore 64 screenshot` o
 
 ### Setup
 ```bash
-pip install httpx openai pillow "psycopg[binary]"
+pip install httpx openai pillow "psycopg[binary]" pyaudio
+export OPENAI_API_KEY=...   # for keyboard, F1 mic and F3 music
 ```
 
 The bridge also needs:
@@ -398,7 +413,7 @@ python3 discord_bridge.py --no-prg     # face is already running
 python3 discord_bridge.py --snapshot screen.png   # save the current screen and quit (good for checking the font)
 ```
 
-Run the bridge **instead of** `chat.py`, not alongside it. Both drive the same C64 memory.
+Run the bridge **instead of** `chat.py`, not alongside it. Both drive the same C64 memory, and the bridge already does everything `chat.py` does.
 
 ### In Discord (owner only)
 ```
