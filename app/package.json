@@ -1,7 +1,7 @@
 {
   "name": "chat-buddy",
   "productName": "Chat Buddy",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "The C64 talking face that chats through ChatGPT, on your Ultimate 64 or C64 Ultimate",
   "author": "Sid Choudhuri (m0nde)",
   "private": true,
@@ -48,6 +48,8 @@
       ],
       "category": "public.app-category.entertainment",
       "identity": "-",
+      "entitlements": "build/entitlements.mac.plist",
+      "entitlementsInherit": "build/entitlements.mac.plist",
       "icon": "build/icon.png",
       "extendInfo": {
         "NSMicrophoneUsageDescription": "Chat Buddy listens to your microphone in F1 mic mode and F3 music mode.",
