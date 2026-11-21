@@ -11,6 +11,10 @@ It's chat.py and discord_bridge.py without the terminal. The app passes everythi
   engine.py test --host 192.168.2.64
   engine.py snapshot --host 192.168.2.64 --chargen PATH --out screen.png
   engine.py run --config config.json      (OPENAI_API_KEY in the environment)
+  engine.py watch --host 192.168.2.64 --chargen PATH
+                                          the screen drawn from screen memory a few times a
+                                          second, as {"type": "frame", "png": base64}, until
+                                          stdin closes (the live view's fallback)
 """
 import argparse
 import io
@@ -21,7 +25,7 @@ import threading
 import time
 from pathlib import Path
 
-ENGINE_VERSION = "1.0.0"
+ENGINE_VERSION = "1.0.1"
 
 _out = sys.stdout  # the real stdout, for JSON lines
 _lock = threading.Lock()
@@ -90,6 +94,30 @@ def snapshot(host: str, chargen_path: str, out: str) -> None:
         emit("result", ok=True, detail=out)
     except Exception as e:
         emit("result", ok=False, detail=str(e))
+
+
+def watch(host: str, chargen_path: str) -> None:
+    """Fallback for the live view: draw the screen from screen and colour memory."""
+    import base64
+    try:
+        chargen = Path(chargen_path).read_bytes()
+        if len(chargen) != 4096:
+            raise ValueError("the character ROM must be 4096 bytes")
+    except Exception as e:
+        emit("result", ok=False, detail=str(e))
+        return
+    stop = threading.Event()
+    threading.Thread(target=lambda: (sys.stdin.read(), stop.set()), daemon=True).start()
+    last = None
+    with httpx.Client(timeout=chat.TIMEOUT) as http:
+        while not stop.is_set():
+            frame = bridge.read_frame(http, host)
+            if frame and frame.key() != last:
+                last = frame.key()
+                emit("frame", png=base64.b64encode(bridge.to_png(frame, chargen)).decode())
+            elif not frame:
+                emit("frame", error="couldn't read the C64 screen")
+            stop.wait(0.3)
 
 
 # ---------- run ----------
@@ -185,7 +213,7 @@ def run(cfg: dict) -> None:
 
 def main() -> int:
     p = argparse.ArgumentParser(description="Chat Buddy engine")
-    p.add_argument("mode", choices=["test", "snapshot", "run", "version"])
+    p.add_argument("mode", choices=["test", "snapshot", "run", "watch", "version"])
     p.add_argument("--host")
     p.add_argument("--chargen")
     p.add_argument("--out")
@@ -197,6 +225,8 @@ def main() -> int:
         test_host(a.host)
     elif a.mode == "snapshot":
         snapshot(a.host, a.chargen, a.out)
+    elif a.mode == "watch":
+        watch(a.host, a.chargen)
     else:
         run(json.loads(Path(a.config).read_text()))
     return 0

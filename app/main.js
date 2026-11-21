@@ -12,16 +12,18 @@ const path = require('path');
 const fs = require('fs');
 const os = require('os');
 const updates = require('./update-main');
+const live = require('./liveview-main');
 
 const WIN = process.platform === 'win32';
 const MAC = process.platform === 'darwin';
 const ICON = path.join(__dirname, 'ui', 'icon-256.png');
 const SETTINGS = () => path.join(app.getPath('userData'), 'settings.json');
 const SECRETS = () => path.join(app.getPath('userData'), 'secrets.json');
-const DEFAULTS = { host: '', chargen: '', loadFace: true, setupDone: false, discord: { enabled: false, app: 'lexi-persimmons' } };
+const DEFAULTS = { host: '', chargen: '', loadFace: true, live: true, setupDone: false, discord: { enabled: false, app: 'lexi-persimmons' } };
 
 let win = null;
 let engine = null; // the running "run" process
+let screenWatch = null; // the live view's fallback (engine "watch")
 
 // ---------- settings and secrets ----------
 
@@ -119,7 +121,36 @@ function startEngine() {
   return { ok: true };
 }
 
+// Live view fallback: the screen drawn from screen memory by the engine ("watch").
+function startScreenWatch() {
+  const s = settings();
+  if (screenWatch) return { ok: true };
+  if (!s.chargen) return { ok: false, error: 'Drawing from screen memory needs the C64 character ROM: add it in Setup (step 4).' };
+  const [cmd, args] = engineCommand(['watch', '--host', s.host, '--chargen', s.chargen]);
+  const p = spawn(cmd, args, { env: env(), stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true });
+  screenWatch = p;
+  let buf = '';
+  p.stdout.on('data', d => {
+    buf += d;
+    let i;
+    while ((i = buf.indexOf('\n')) >= 0) {
+      const line = buf.slice(0, i); buf = buf.slice(i + 1);
+      try { const ev = JSON.parse(line); if (ev.type === 'frame' || ev.type === 'result') send('screen:frame', ev); } catch { /* not ours */ }
+    }
+  });
+  p.on('close', () => { if (screenWatch === p) screenWatch = null; });
+  return { ok: true };
+}
+
+function stopScreenWatch() {
+  const p = screenWatch;
+  screenWatch = null;
+  if (p) { try { p.stdin.end(); } catch { /* gone */ } setTimeout(() => { if (p.exitCode === null) p.kill(); }, 1500); }
+}
+
 function stopEngine() {
+  live.stop();
+  stopScreenWatch();
   const p = engine;
   if (!p) return;
   try { p.stdin.end(); } catch { /* already gone */ }
@@ -193,6 +224,17 @@ ipcMain.handle('engine:snapshot', async () => {
   const res = await engineOnce(['snapshot', '--host', s.host, '--chargen', s.chargen, '--out', r.filePath]);
   if (res.ok) res.image = 'data:image/png;base64,' + fs.readFileSync(r.filePath).toString('base64');
   return res;
+});
+ipcMain.handle('live:start', () => live.start(settings().host, send));
+ipcMain.handle('live:stop', () => live.stop());
+ipcMain.handle('screen:start', () => startScreenWatch());
+ipcMain.handle('screen:stop', () => { stopScreenWatch(); return true; });
+ipcMain.handle('save-png', async (e, dataUrl) => {
+  if (!/^data:image\/png;base64,/.test(String(dataUrl))) return { ok: false, detail: 'No picture to save.' };
+  const r = await dialog.showSaveDialog(win, { title: 'Save screenshot', defaultPath: path.join(app.getPath('pictures'), 'chat-buddy.png'), filters: [{ name: 'PNG', extensions: ['png'] }] });
+  if (r.canceled || !r.filePath) return { ok: false, canceled: true };
+  fs.writeFileSync(r.filePath, Buffer.from(String(dataUrl).split(',')[1], 'base64'));
+  return { ok: true, detail: r.filePath };
 });
 ipcMain.handle('open-external', (e, url) => { if (/^https:\/\//.test(url)) shell.openExternal(url); });
 

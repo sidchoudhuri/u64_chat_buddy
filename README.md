@@ -28,9 +28,11 @@ The first time you open it, it walks you through setup:
 1. **Your Ultimate's IP address**, with a Test button.
 2. **Your OpenAI key.** It's stored in the system keychain, not a file.
 3. **The talking face.** It's built in and loaded onto the C64 when you press Start.
-4. **Screenshots (optional).** These need the C64 character ROM, which the app finds in VICE or lets you pick.
+4. **Character ROM (optional).** It's only needed if the live view can't run and you want the screen drawn from screen memory, or for the Discord bridge. The app finds it in VICE or lets you pick it.
 
 Then press **Start** and type on the C64, or press F1 to talk and F3 for music mode. Nothing else needs installing: the Python part runs inside the app.
+
+**Live view:** while it runs, the window shows the C64's screen from the Ultimate's video stream, the same way as Viz. The Ultimate only streams over wired Ethernet, and the computer's firewall must let Chat Buddy receive on UDP port 11000. If no picture arrives, Chat Buddy says why and offers to draw the screen from screen memory instead, using the character ROM.
 
 **Updates:** both versions check for updates on launch and from **Check for Updates…**. They download the new version and install it themselves.
 

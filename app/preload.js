@@ -17,8 +17,13 @@ contextBridge.exposeInMainWorld('buddy', {
   start: () => ipcRenderer.invoke('engine:start'),
   stop: () => ipcRenderer.invoke('engine:stop'),
   snapshot: () => ipcRenderer.invoke('engine:snapshot'),
+  liveStart: () => ipcRenderer.invoke('live:start'),
+  liveStop: () => ipcRenderer.invoke('live:stop'),
+  screenStart: () => ipcRenderer.invoke('screen:start'),
+  screenStop: () => ipcRenderer.invoke('screen:stop'),
+  savePng: dataUrl => ipcRenderer.invoke('save-png', dataUrl),
   openExternal: url => ipcRenderer.invoke('open-external', url),
   on: (channel, fn) => {
-    if (['engine:event', 'engine:running', 'menu:discord'].includes(channel)) ipcRenderer.on(channel, (e, d) => fn(d));
+    if (['engine:event', 'engine:running', 'live:frame', 'live:status', 'screen:frame'].includes(channel)) ipcRenderer.on(channel, (e, d) => fn(d));
   },
 });

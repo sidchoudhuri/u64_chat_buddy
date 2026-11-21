@@ -47,9 +47,9 @@
         <p class="dim small">Turn this off if the face is already running.</p>
       </li>
       <li id="step-rom">
-        <div class="step-head"><span class="name">4. Screenshots <span class="dim">(optional)</span></span><span class="state" id="rom-state"></span></div>
-        <p class="dim small">To save pictures of the C64 screen, Chat Buddy needs the C64 character ROM. It's Commodore's, so it can't come with the app,
-          but it's in <a href="https://vice-emu.sourceforge.io/" class="ext">VICE</a>: install VICE and press Find.</p>
+        <div class="step-head"><span class="name">4. Character ROM <span class="dim">(optional)</span></span><span class="state" id="rom-state"></span></div>
+        <p class="dim small">Only needed if the live view can't get a picture (it needs wired Ethernet) and you'd like the screen drawn from the C64's memory instead.
+          It's Commodore's, so it can't come with the app, but it's in <a href="https://vice-emu.sourceforge.io/" class="ext">VICE</a>: install VICE and press Find.</p>
         <div class="row"><button id="btn-find">Find in VICE</button><button id="btn-pick">Choose file…</button><span class="dim small mono grow" id="rom-path"></span></div>
       </li>
     </ol>
@@ -82,8 +82,16 @@
   <!-- Main -->
   <main id="main" class="cols two" hidden>
     <div class="panel">
-      <div class="row spread"><h2>Commodore 64</h2><span class="dim small mono" id="host-label"></span></div>
-      <div class="preview"><div class="preview-screen" id="screen"><span class="dim" id="screen-msg">Press Start, then type on the C64 or press F1 to talk.</span></div></div>
+      <div class="row spread"><h2>Commodore 64 <span class="dim small mono" id="host-label"></span></h2>
+        <label class="check small"><input type="checkbox" id="live-on" checked> Live view from the Ultimate</label></div>
+      <div class="preview"><div class="preview-screen" id="screen">
+        <canvas id="live-canvas" width="384" height="272" aria-label="The C64's screen" hidden></canvas>
+        <img id="mem-img" alt="The C64's screen" hidden>
+        <div class="screen-box" id="screen-box">
+          <span class="dim" id="screen-msg">Press Start, then type on the C64 or press F1 to talk.</span>
+          <button id="btn-fallback" hidden>Draw it from screen memory instead</button>
+        </div>
+      </div></div>
       <div class="row">
         <span class="pill" id="m-kbd">KBD</span><span class="pill" id="m-mic">F1 MIC</span><span class="pill" id="m-music">F3 MUSIC</span>
         <span class="pill" id="m-speak">speaking</span>
