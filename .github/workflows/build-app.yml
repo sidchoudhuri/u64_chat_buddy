@@ -1,0 +1,129 @@
+name: Build Chat Buddy
+
+# Builds the Chat Buddy app (Mac .dmg for Apple silicon and Intel, Windows installer) and publishes
+# it to the public chat-buddy-releases repo, where the app's Check for Updates looks.
+# Runs when app/package.json has a version that isn't released yet, or by hand.
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'app/**'
+      - 'engine.py'
+      - 'chat.py'
+      - 'discord_bridge.py'
+      - 'talking_face.prg'
+
+jobs:
+  version:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+      build: ${{ steps.check.outputs.build }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Version from app/package.json
+        id: v
+        run: echo "version=$(node -p "require('./app/package.json').version")" >> "$GITHUB_OUTPUT"
+      - name: Already released?
+        id: check
+        env:
+          GH_TOKEN: ${{ secrets.RELEASES_TOKEN }}
+        run: |
+          if gh release view "v${{ steps.v.outputs.version }}" -R sidchoudhuri/chat-buddy-releases >/dev/null 2>&1; then
+            echo "Chat Buddy ${{ steps.v.outputs.version }} is already released."
+            echo "build=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "build=true" >> "$GITHUB_OUTPUT"
+          fi
+
+  build:
+    needs: version
+    if: needs.version.outputs.build == 'true' || github.event_name == 'workflow_dispatch'
+    strategy:
+      matrix:
+        include:
+          - os: macos-latest       # Apple silicon: Chat-Buddy-<version>-arm64.dmg
+            target: --mac --arm64
+            dmg: arm64
+          - os: macos-15-intel     # Intel Macs: Chat-Buddy-<version>-intel.dmg
+            target: --mac --x64
+            dmg: intel
+          - os: windows-latest
+            target: --win
+            dmg: ''
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: PortAudio for the microphone (Mac)
+        if: runner.os == 'macOS'
+        run: brew install portaudio
+      - name: Build the engine (Python, bundled so users don't need it)
+        shell: bash
+        run: |
+          python -m pip install --upgrade pip
+          if [ "$RUNNER_OS" = "macOS" ]; then
+            export CFLAGS="-I$(brew --prefix portaudio)/include" LDFLAGS="-L$(brew --prefix portaudio)/lib"
+          fi
+          python -m pip install pyinstaller httpx openai pillow "psycopg[binary]" pyaudio
+          pyinstaller --noconfirm --onedir --name chat-buddy-engine --distpath app/engine \
+            --collect-all psycopg_binary --hidden-import chat --hidden-import discord_bridge engine.py
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+      - name: Build the app
+        working-directory: app
+        shell: bash
+        run: |
+          npm ci
+          if [ -n "${{ matrix.dmg }}" ]; then
+            npx electron-builder ${{ matrix.target }} --publish never -c.dmg.artifactName='Chat-Buddy-${version}-${{ matrix.dmg }}.${ext}'
+          else
+            npx electron-builder ${{ matrix.target }} --publish never
+          fi
+      - uses: actions/upload-artifact@v4
+        with:
+          name: chat-buddy-${{ matrix.os }}
+          path: |
+            app/dist/*.dmg
+            app/dist/*.exe
+          if-no-files-found: error
+
+  release:
+    needs: [version, build]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Release notes from DEVLOG.md
+        run: |
+          node -e '
+            const v = require("./app/package.json").version;
+            const lines = require("fs").readFileSync("DEVLOG.md", "utf8").split("\n");
+            const i = lines.findIndex(l => l.startsWith("## ") && l.includes(`Chat Buddy ${v}`));
+            const out = [];
+            if (i >= 0) for (let j = i + 1; j < lines.length && !lines[j].startsWith("## "); j++) out.push(lines[j]);
+            require("fs").writeFileSync("notes.md", out.join("\n").trim() || `Chat Buddy ${v}`);
+          '
+      - name: Publish to the public releases repo
+        uses: softprops/action-gh-release@v2
+        with:
+          repository: sidchoudhuri/chat-buddy-releases
+          token: ${{ secrets.RELEASES_TOKEN }}
+          tag_name: v${{ needs.version.outputs.version }}
+          name: Chat Buddy ${{ needs.version.outputs.version }}
+          body_path: notes.md
+          make_latest: true
+          overwrite_files: true
+          files: |
+            dist/*.dmg
+            dist/*.exe

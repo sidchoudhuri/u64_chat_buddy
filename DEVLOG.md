@@ -1,5 +1,27 @@
 # u64_chat_buddy devlog
 
+## 2026-11-20 - Chat Buddy 1.0.0
+
+The talking face is now an app, **Chat Buddy**, for Mac (Apple silicon and Intel) and Windows.
+
+- **Setup that walks you through it:** your Ultimate's IP address (with a test button), your OpenAI key (kept in the system keychain) and, optionally, the C64 character ROM from VICE for screenshots.
+- **Start and talk:** the talking face is built in and loads onto the C64. Type on the C64, press F1 to talk, or F3 for music mode, the same as `chat.py`.
+- **Watch it in the app:** the conversation appears as it happens, with the C64's mode (keyboard, mic, music, speaking) and a Save screenshot button.
+- **Nothing else to install:** the Python part comes inside the app.
+- **Updates itself:** it checks for new versions on launch and from Check for Updates….
+
+## 2026-11-20 - Discord bridge 0.2.2
+
+Lexi now shows all the C64's pictures in one live message per channel, which follows that channel's screenshot or GIF setting. So keyboard and mic exchanges send both a screenshot and a GIF again. Music comments stay text only.
+
+## 2026-11-20 - Discord bridge 0.2.1
+
+Posting a GIF to Discord for every local exchange was far too much. Lexi now shows C64 activity in a single live message that updates in place, so the bridge sends less:
+- keyboard and mic exchanges: one screenshot, no GIF
+- music comments: text only, with no screen capture at all
+
+Discord-asked questions still get a screenshot or GIF as before.
+
 ## 2026-11-20 - Discord bridge 0.2.0, chat.py 0.4.5
 
 **The bridge now does everything chat.py does.** With 0.1.0 running, pressing F1 switched the C64 to MIC but nothing was listening, because the mic, music and keyboard handling only lived in `chat.py`. Now the bridge runs those same listeners, so typing on the C64, F1 mic mode and F3 music mode all work while it's connected to Discord. `chat.py` stays the version without Discord.

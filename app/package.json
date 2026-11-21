@@ -1,0 +1,66 @@
+{
+  "name": "chat-buddy",
+  "productName": "Chat Buddy",
+  "version": "1.0.0",
+  "description": "The C64 talking face that chats through ChatGPT, on your Ultimate 64 or C64 Ultimate",
+  "author": "Sid Choudhuri (m0nde)",
+  "private": true,
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "dist:mac": "electron-builder --mac",
+    "dist:win": "electron-builder --win"
+  },
+  "devDependencies": {
+    "electron": "^45.3.4",
+    "electron-builder": "^26.18.0"
+  },
+  "build": {
+    "appId": "de.m0n.chatbuddy",
+    "productName": "Chat Buddy",
+    "files": [
+      "main.js",
+      "update-main.js",
+      "preload.js",
+      "ui/**/*",
+      "package.json"
+    ],
+    "extraResources": [
+      { "from": "engine/chat-buddy-engine", "to": "engine" },
+      { "from": "../talking_face.prg", "to": "talking_face.prg" },
+      { "from": "../LICENSE", "to": "LICENSE" }
+    ],
+    "mac": {
+      "target": [{ "target": "dmg" }],
+      "category": "public.app-category.entertainment",
+      "identity": "-",
+      "icon": "build/icon.png",
+      "extendInfo": {
+        "NSMicrophoneUsageDescription": "Chat Buddy listens to your microphone in F1 mic mode and F3 music mode.",
+        "NSLocalNetworkUsageDescription": "Chat Buddy talks to your Ultimate 64 or C64 Ultimate on your network."
+      }
+    },
+    "dmg": {
+      "artifactName": "Chat-Buddy-${version}-arm64.dmg"
+    },
+    "win": {
+      "target": [{ "target": "nsis", "arch": ["x64"] }],
+      "icon": "build/icon-win.png"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "artifactName": "Chat-Buddy-${version}-Windows-Setup.exe"
+    },
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "publish": []
+  },
+  "license": "GPL-3.0-or-later",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/sidchoudhuri/u64_chat_buddy"
+  }
+}

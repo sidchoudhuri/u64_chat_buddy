@@ -1,0 +1,110 @@
+<!doctype html>
+<!-- Chat Buddy. Copyright (C) 2026 Sid Choudhuri (m0nde). GNU GPL v3 or later: see LICENSE. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; style-src 'self'">
+<title>Chat Buddy</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="app">
+  <header class="top">
+    <div class="brand">
+      <img src="icon-256.png" alt="" class="logo">
+      <h1>Chat Buddy</h1>
+      <span class="dim small" id="version"></span>
+    </div>
+    <div class="row">
+      <span class="status" id="st-c64">C64</span>
+      <span class="status" id="st-ai">OpenAI</span>
+      <span class="status" id="st-discord" hidden>Lexi</span>
+      <button id="btn-setup">Setup</button>
+      <button id="btn-help" title="Help">?</button>
+    </div>
+  </header>
+
+  <!-- Setup: walks through everything once; can be opened again from the Setup button -->
+  <section id="setup" class="narrow" hidden>
+    <h2 class="big-h">Set up Chat Buddy</h2>
+    <p class="dim">Chat Buddy makes the C64 talking face chat through ChatGPT on your Ultimate 64 or C64 Ultimate. Three steps (and an optional fourth) and you're talking.</p>
+    <ol class="steps">
+      <li id="step-c64">
+        <div class="step-head"><span class="name">1. Your Ultimate</span><span class="state" id="c64-state"></span></div>
+        <p class="dim small">Its IP address: on the Ultimate, press F2 (or the menu button) and look under Network.</p>
+        <div class="cmd"><input id="host" class="mono" placeholder="192.168.1.64" spellcheck="false"><button id="btn-test">Test</button></div>
+      </li>
+      <li id="step-ai">
+        <div class="step-head"><span class="name">2. OpenAI key</span><span class="state" id="ai-state"></span></div>
+        <p class="dim small">ChatGPT answers through your own OpenAI account. Make a key at
+          <a href="https://platform.openai.com/api-keys" class="ext">platform.openai.com/api-keys</a> and paste it here.
+          It's kept in your computer's keychain, not in a file.</p>
+        <div class="cmd"><input id="key" type="password" class="mono" placeholder="sk-..." spellcheck="false"><button id="btn-key">Save</button></div>
+      </li>
+      <li id="step-face">
+        <div class="step-head"><span class="name">3. The talking face</span><span class="state ok-t">built in</span></div>
+        <label class="check"><input type="checkbox" id="load-face" checked> Load the talking face on the C64 when I press Start</label>
+        <p class="dim small">Turn this off if the face is already running.</p>
+      </li>
+      <li id="step-rom">
+        <div class="step-head"><span class="name">4. Screenshots <span class="dim">(optional)</span></span><span class="state" id="rom-state"></span></div>
+        <p class="dim small">To save pictures of the C64 screen, Chat Buddy needs the C64 character ROM. It's Commodore's, so it can't come with the app,
+          but it's in <a href="https://vice-emu.sourceforge.io/" class="ext">VICE</a>: install VICE and press Find.</p>
+        <div class="row"><button id="btn-find">Find in VICE</button><button id="btn-pick">Choose file…</button><span class="dim small mono grow" id="rom-path"></span></div>
+      </li>
+    </ol>
+    <div class="row end"><button class="primary big" id="btn-done">Done</button></div>
+  </section>
+
+  <!-- Discord bridge (Lexi): only for the owner, hidden until Ctrl/Cmd+Shift+D -->
+  <section id="discord" class="narrow" hidden>
+    <h2 class="big-h">Discord bridge (Lexi)</h2>
+    <p class="dim small">Connects this C64 to Lexi's commodore 64 personality through her database. Needs the character ROM (step 4).</p>
+    <div class="panel">
+      <label class="check"><input type="checkbox" id="discord-on"> Connect to Lexi when I press Start</label>
+      <div class="fields">
+        <label for="heroku-app">Heroku app</label>
+        <div class="cmd"><input id="heroku-app" class="mono" spellcheck="false"><button id="btn-heroku">Get address from Heroku</button></div>
+        <label for="discord-url">or paste</label>
+        <div class="cmd"><input id="discord-url" type="password" class="mono" placeholder="postgres://..." spellcheck="false"><button id="btn-discord-url">Save</button></div>
+      </div>
+      <span class="status" id="discord-state"></span>
+    </div>
+    <div class="row end"><button id="btn-discord-close">Close</button></div>
+  </section>
+
+  <!-- Help: short, like a command-line tool's --help -->
+  <section id="help" class="narrow" hidden>
+    <pre class="termlog help mono" id="help-text"></pre>
+    <div class="row end"><button id="btn-help-close">Close</button></div>
+  </section>
+
+  <!-- Main -->
+  <main id="main" class="cols two" hidden>
+    <div class="panel">
+      <div class="row spread"><h2>Commodore 64</h2><span class="dim small mono" id="host-label"></span></div>
+      <div class="preview"><div class="preview-screen" id="screen"><span class="dim" id="screen-msg">Press Start, then type on the C64 or press F1 to talk.</span></div></div>
+      <div class="row">
+        <span class="pill" id="m-kbd">KBD</span><span class="pill" id="m-mic">F1 MIC</span><span class="pill" id="m-music">F3 MUSIC</span>
+        <span class="pill" id="m-speak">speaking</span>
+      </div>
+      <div class="row">
+        <button class="primary big" id="btn-start">Start</button>
+        <button id="btn-snap">Save screenshot…</button>
+      </div>
+    </div>
+    <div class="panel">
+      <h2>Conversation</h2>
+      <div class="convo" id="convo"><p class="dim small">Nothing said yet.</p></div>
+      <details class="log"><summary>Details</summary><pre id="log"></pre></details>
+    </div>
+  </main>
+
+  <footer class="foot">
+    <span class="dim small">Sid Choudhuri (m0nde) · GNU GPL v3</span>
+    <span class="dim small" id="foot-msg"></span>
+  </footer>
+</div>
+<script src="app.js"></script>
+</body>
+</html>
