@@ -18,6 +18,7 @@
     <div class="row">
       <span class="status" id="st-c64">C64</span>
       <span class="status" id="st-ai">OpenAI</span>
+      <span class="status" id="st-mic">Mic</span>
       <span class="status" id="st-discord" hidden>Lexi</span>
       <button id="btn-setup">Setup</button>
       <button id="btn-help" title="Help">?</button>
@@ -103,6 +104,10 @@
     </div>
     <div class="panel">
       <h2>Conversation</h2>
+      <div class="notice" id="mic-notice" hidden>
+        <span id="mic-notice-text"></span>
+        <button id="btn-mic-settings">Open Microphone settings</button>
+      </div>
       <div class="convo" id="convo"><p class="dim small">Nothing said yet.</p></div>
       <details class="log"><summary>Details</summary><pre id="log"></pre></details>
     </div>

@@ -6,7 +6,7 @@
 // PyInstaller), so nothing else needs installing. The OpenAI key (and Lexi's database address,
 // for the owner's Discord bridge) are encrypted with the system keychain via safeStorage.
 
-const { app, BrowserWindow, Menu, dialog, ipcMain, nativeImage, safeStorage, shell } = require('electron');
+const { app, BrowserWindow, Menu, dialog, ipcMain, nativeImage, safeStorage, shell, systemPreferences } = require('electron');
 const { spawn, execFile } = require('child_process');
 const path = require('path');
 const fs = require('fs');
@@ -214,7 +214,31 @@ ipcMain.handle('chargen:pick', async () => {
   try { if (fs.statSync(f).size !== 4096) return { error: 'That file isn\'t 4096 bytes, so it isn\'t a C64 character ROM.' }; } catch { return ''; }
   return f;
 });
-ipcMain.handle('engine:start', () => startEngine());
+// ---------- microphone permission ----------
+// macOS (and Windows' privacy settings) only let the app - and the engine it starts - hear the
+// microphone once the system has asked and the user said yes. Without that, the mic gives silence.
+function micStatus() {
+  if (!MAC && !WIN) return 'granted';
+  try { return systemPreferences.getMediaAccessStatus('microphone'); } catch { return 'unknown'; }
+}
+
+async function askForMic() {
+  if (MAC && micStatus() === 'not-determined') {
+    try { await systemPreferences.askForMediaAccess('microphone'); } catch { /* answered below */ }
+  }
+  return micStatus();
+}
+
+ipcMain.handle('mic:status', () => micStatus());
+ipcMain.handle('mic:ask', () => askForMic());
+ipcMain.handle('mic:settings', () => shell.openExternal(MAC
+  ? 'x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone'
+  : 'ms-settings:privacy-microphone'));
+
+ipcMain.handle('engine:start', async () => {
+  const mic = await askForMic();   // the "Chat Buddy would like to access the microphone" prompt, the first time
+  return { ...startEngine(), mic };
+});
 ipcMain.handle('engine:stop', () => { stopEngine(); return true; });
 ipcMain.handle('engine:snapshot', async () => {
   const s = settings();

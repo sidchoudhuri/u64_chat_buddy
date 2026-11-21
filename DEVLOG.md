@@ -1,5 +1,11 @@
 # u64_chat_buddy devlog
 
+## 2026-11-21 - Chat Buddy 1.0.2
+
+- **Microphone fixed on the Mac:** Chat Buddy now asks for microphone access the first time you press Start. Before, macOS was never asked, so the app wasn't in the Microphone list and F1 mic mode and F3 music mode only heard silence.
+- **Mic light:** a new status light next to C64 and OpenAI shows whether the microphone is working.
+- **Helpful warnings:** if access is refused, or the microphone gives only silence, the window says so, with a button that opens the Microphone settings.
+
 ## 2026-11-21 - Chat Buddy 1.0.1
 
 - **Live view:** the C64's screen now shows in the app while Chat Buddy runs, straight from the Ultimate's own video stream, the same way as Viz. Switch it off with the "Live view from the Ultimate" box.

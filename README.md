@@ -36,6 +36,8 @@ Then press **Start** and type on the C64, or press F1 to talk and F3 for music m
 
 **Updates:** both versions check for updates on launch and from **Check for Updates…**. They download the new version and install it themselves.
 
+**Microphone:** the first time you press Start, Chat Buddy asks for microphone access (for F1 mic mode and F3 music mode). If you said no, the Mic light turns red and the window has a button to open the Microphone settings.
+
 **Unsigned app:** Chat Buddy isn't signed with an Apple certificate, so the first download on a Mac may need right-click → Open (or `xattr -cr "/Applications/Chat Buddy.app"`). Updates after that install without the warning.
 
 ### How it's built

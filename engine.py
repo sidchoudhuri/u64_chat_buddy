@@ -25,7 +25,7 @@ import threading
 import time
 from pathlib import Path
 
-ENGINE_VERSION = "1.0.1"
+ENGINE_VERSION = "1.0.2"
 
 _out = sys.stdout  # the real stdout, for JSON lines
 _lock = threading.Lock()
@@ -141,6 +141,40 @@ def watch_status(host: str, stop: threading.Event, discord: bool) -> None:
             stop.wait(0.5)
 
 
+def watch_mic(host: str, stop: threading.Event) -> None:
+    """Tell the app whether the microphone works. When the system hasn't allowed the app to use
+    it, the mic doesn't fail: it gives exact silence (all zeros). Checked each time F1 goes on."""
+    if not chat.PYAUDIO_AVAILABLE:
+        emit("mic", available=False)
+        return
+    emit("mic", available=True)
+    import struct
+    checked = False
+    with httpx.Client(timeout=2.0) as http:
+        while not stop.is_set():
+            mode = chat.http_readmem(http, host, chat.MODE_FLAG_ADDR, 1)
+            mic_on = bool(mode and mode[0] == chat.MODE_MIC)
+            if not mic_on:
+                checked = False
+            elif not checked:
+                checked = True
+                stop.wait(2.0)
+                try:
+                    pa = chat.pyaudio.PyAudio()
+                    s = pa.open(format=chat.pyaudio.paInt16, channels=1, rate=chat.MIC_SAMPLE_RATE,
+                                input=True, frames_per_buffer=chat.MIC_CHUNK)
+                    data = b"".join(s.read(chat.MIC_CHUNK, exception_on_overflow=False) for _ in range(16))
+                    s.stop_stream(); s.close(); pa.terminate()
+                    peak = max(abs(v) for v in struct.unpack(f"{len(data) // 2}h", data)) if data else 0
+                    emit("mic", available=True, silent=peak == 0)
+                    if peak == 0:
+                        print("error: the microphone is giving only silence - is Chat Buddy allowed to use it?", file=sys.stderr)
+                except Exception as e:
+                    emit("mic", available=True, error=str(e))
+                    print(f"error: microphone: {e}", file=sys.stderr)
+            stop.wait(0.5)
+
+
 def serve_discord_jobs(url: str, host: str, chargen: bytes, stop: threading.Event) -> None:
     """Lexi's questions from Discord (the same loop as discord_bridge.py)."""
     db = None
@@ -198,6 +232,7 @@ def run(cfg: dict) -> None:
             print("connected to Lexi")
 
     bridge.state["host"] = host
+    threading.Thread(target=watch_mic, args=(host, stop), daemon=True).start()
     bridge.start_local_chat(stop)       # keyboard, F1 mic, F3 music (needs OPENAI_API_KEY)
     if not discord_url:
         chat.ON_REPLY = None            # local chats stay local without Discord

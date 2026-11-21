@@ -36,6 +36,7 @@ button:hover:not(:disabled) { background: #3a3234; }
 button.primary { background: var(--y); color: #1b1718; border-color: var(--y); }
 button.primary:hover:not(:disabled) { background: #ffe68a; }
 button.stop { background: var(--rd); border-color: var(--rd); color: #1b1718; }
+button.stop:hover:not(:disabled) { background: #ff9a8a; }
 button.big { font-size: 15px; padding: 10px 22px; }
 button:disabled { color: #6e6560; cursor: default; }
 button:focus-visible, input:focus-visible { outline: 2px solid var(--bl); outline-offset: 2px; }
@@ -81,3 +82,5 @@ h2 .small { font-weight: 400; margin-left: 6px; }
 .fields { display: grid; grid-template-columns: auto 1fr; gap: 10px 12px; align-items: center; }
 .fields label { font: 600 12px var(--sans); color: var(--dim); }
 #screen-msg { white-space: pre-line; }
+.notice { display: flex; flex-direction: column; gap: 10px; align-items: flex-start; padding: 12px 14px; border: 1px solid var(--rd);
+  border-radius: 8px; background: #2a1a18; line-height: 1.5; }

@@ -49,6 +49,31 @@ function setupStates() {
   $('btn-done').disabled = !(cfg.host && cfg.hasKey);
 }
 
+// ---------- microphone ----------
+const MIC_HELP = navigator.platform.startsWith('Mac')
+  ? 'Allow it in System Settings → Privacy & Security → Microphone, then press Stop and Start.'
+  : 'Allow it in Settings → Privacy & security → Microphone (including "Let desktop apps access your microphone"), then press Stop and Start.';
+
+function micNotice(text, withButton = true) {
+  $('mic-notice').hidden = !text;
+  $('mic-notice-text').textContent = text || '';
+  $('btn-mic-settings').hidden = !withButton;
+}
+
+function micState(status) {
+  if (status === 'denied' || status === 'restricted') {
+    setStatus($('st-mic'), false, 'Mic');
+    micNotice(`Chat Buddy isn't allowed to use the microphone, so F1 mic mode and F3 music mode can't hear you. ${MIC_HELP}`);
+  } else if (status === 'granted') {
+    setStatus($('st-mic'), true, 'Mic');
+    micNotice('');
+  } else {
+    setStatus($('st-mic'), null, 'Mic');
+  }
+}
+
+$('btn-mic-settings').onclick = () => window.buddy.micSettings();
+
 function topStatus() {
   setStatus($('st-c64'), running ? c64Ok : (cfg.host ? null : false), 'C64');
   setStatus($('st-ai'), cfg.hasKey ? true : false, 'OpenAI');
@@ -67,6 +92,7 @@ async function refresh() {
   setStatus($('discord-state'), cfg.hasDiscordUrl ? true : null, cfg.hasDiscordUrl ? 'Database address saved' : 'No database address yet');
   setupStates();
   topStatus();
+  micState(await window.buddy.micStatus());
 }
 
 // ---------- setup ----------
@@ -196,6 +222,22 @@ window.buddy.on('engine:event', ev => {
     topStatus();
     return;
   }
+  if (ev.type === 'mic') {
+    if (ev.available === false) {
+      setStatus($('st-mic'), false, 'Mic');
+      micNotice('The microphone part is missing from this build of Chat Buddy, so F1 and F3 can\'t hear you. Please report this.', false);
+    } else if (ev.silent) {
+      setStatus($('st-mic'), false, 'Mic');
+      micNotice(`The microphone is giving only silence. Is Chat Buddy allowed to use it? ${MIC_HELP}`);
+    } else if (ev.error) {
+      setStatus($('st-mic'), false, 'Mic');
+      micNotice(`The microphone didn't open: ${ev.error}`, false);
+    } else if (ev.silent === false) {
+      setStatus($('st-mic'), true, 'Mic');
+      micNotice('');
+    }
+    return;
+  }
   if (ev.type !== 'log') return;
   const t = ev.text;
   addLog(t);
@@ -207,7 +249,8 @@ window.buddy.on('engine:event', ev => {
 $('btn-start').onclick = async () => {
   if (running) return window.buddy.stop();
   $('log').textContent = '';
-  await window.buddy.start();
+  const r = await window.buddy.start();   // asks for the microphone the first time
+  if (r && r.mic) micState(r.mic);
 };
 
 // ---------- the C64's screen: the Ultimate's live video (as in Viz), or drawn from screen memory ----------
