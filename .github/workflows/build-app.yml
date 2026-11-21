@@ -3,6 +3,10 @@ name: Build Chat Buddy
 # Builds the Chat Buddy app (Mac .dmg for Apple silicon and Intel, Windows installer) and publishes
 # it to the public chat-buddy-releases repo, where the app's Check for Updates looks.
 # Runs when app/package.json has a version that isn't released yet, or by hand.
+#
+# Hardened: every action is pinned to an exact commit (the version is in the comment), the
+# workflow's own token is read-only, and checkouts don't keep the token in the workspace.
+# Publishing to chat-buddy-releases uses the RELEASES_TOKEN secret, limited to that repo.
 
 on:
   workflow_dispatch:
@@ -15,14 +19,24 @@ on:
       - 'discord_bridge.py'
       - 'talking_face.prg'
 
+permissions:
+  contents: read
+
+concurrency:
+  group: build-chat-buddy
+  cancel-in-progress: false
+
 jobs:
   version:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     outputs:
       version: ${{ steps.v.outputs.version }}
       build: ${{ steps.check.outputs.build }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - name: Version from app/package.json
         id: v
         run: echo "version=$(node -p "require('./app/package.json').version")" >> "$GITHUB_OUTPUT"
@@ -54,9 +68,12 @@ jobs:
             target: --win
             dmg: ''
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: '3.12'
       - name: PortAudio for the microphone (Mac)
@@ -72,9 +89,9 @@ jobs:
           python -m pip install pyinstaller httpx openai pillow "psycopg[binary]" pyaudio
           pyinstaller --noconfirm --onedir --name chat-buddy-engine --distpath app/engine \
             --collect-all psycopg_binary --hidden-import chat --hidden-import discord_bridge engine.py
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: 22
+          node-version: 26
           cache: npm
           cache-dependency-path: app/package-lock.json
       - name: Build the app
@@ -87,7 +104,7 @@ jobs:
           else
             npx electron-builder ${{ matrix.target }} --publish never
           fi
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: chat-buddy-${{ matrix.os }}
           path: |
@@ -98,9 +115,12 @@ jobs:
   release:
     needs: [version, build]
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           path: dist
           merge-multiple: true
@@ -115,7 +135,7 @@ jobs:
             require("fs").writeFileSync("notes.md", out.join("\n").trim() || `Chat Buddy ${v}`);
           '
       - name: Publish to the public releases repo
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@8a0cd651e5b2365bd640854a3fa5dfc70e4875f3 # v3.0.4
         with:
           repository: sidchoudhuri/chat-buddy-releases
           token: ${{ secrets.RELEASES_TOKEN }}

@@ -27,12 +27,25 @@
       "package.json"
     ],
     "extraResources": [
-      { "from": "engine/chat-buddy-engine", "to": "engine" },
-      { "from": "../talking_face.prg", "to": "talking_face.prg" },
-      { "from": "../LICENSE", "to": "LICENSE" }
+      {
+        "from": "engine/chat-buddy-engine",
+        "to": "engine"
+      },
+      {
+        "from": "../talking_face.prg",
+        "to": "talking_face.prg"
+      },
+      {
+        "from": "../LICENSE",
+        "to": "LICENSE"
+      }
     ],
     "mac": {
-      "target": [{ "target": "dmg" }],
+      "target": [
+        {
+          "target": "dmg"
+        }
+      ],
       "category": "public.app-category.entertainment",
       "identity": "-",
       "icon": "build/icon.png",
@@ -45,7 +58,14 @@
       "artifactName": "Chat-Buddy-${version}-arm64.dmg"
     },
     "win": {
-      "target": [{ "target": "nsis", "arch": ["x64"] }],
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
       "icon": "build/icon-win.png"
     },
     "nsis": {
@@ -63,5 +83,8 @@
   "repository": {
     "type": "git",
     "url": "https://github.com/sidchoudhuri/u64_chat_buddy"
+  },
+  "overrides": {
+    "minimatch@>=7.0.0 <11.0.1": "^11.0.9"
   }
 }
