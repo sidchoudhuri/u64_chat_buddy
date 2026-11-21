@@ -6,7 +6,9 @@ database. This script runs on the same network as the C64, picks up each job, sh
 question on row 1, makes the face speak the reply, captures the screen as a PNG or GIF and
 puts the image back in the database for Lexi to post.
 
-Run this instead of chat.py (both drive the same C64 memory).
+It also does everything chat.py does - C64 keyboard input, F1 mic mode and F3 music mode -
+and posts those exchanges and the F1/F3 switches to Discord too. Run this instead of chat.py
+(both drive the same C64 memory); chat.py is the same thing without Discord.
 """
 import argparse
 import glob
@@ -26,7 +28,7 @@ from PIL import Image
 
 import chat
 
-VERSION = "0.1.0"
+VERSION = "0.2.0"
 BUILD   = "2026-11-20-1"
 
 HEARTBEAT_INTERVAL  = 5.0      # seconds between "bridge is alive" check-ins
@@ -38,6 +40,7 @@ FRAME_INTERVAL      = 0.2      # seconds between captured frames
 GIF_MAX_BYTES       = 8 * 1024 * 1024
 GIF_MAX_FRAMES      = 400
 DEFAULT_APP         = "lexi-persimmons"
+MODE_POLL_INTERVAL  = 0.5      # seconds between checks of the F1/F3 flags
 
 TICKER_ROW = 23
 SCREEN_ADDR = 0x0400
@@ -338,6 +341,96 @@ def heartbeat(url: str, stop: threading.Event) -> None:
         stop.wait(HEARTBEAT_INTERVAL)
 
 
+# ---------- local exchanges and F1/F3 (posted to Discord through u64_events) ----------
+
+state = {"url": None, "host": None, "chargen": None}
+gpt_lock = threading.Lock()   # one conversation on the C64 at a time: keyboard, mic, music or Discord
+
+
+def insert_event(**fields) -> None:
+    """Add an event for Lexi to post. Uses its own connection (called from listener threads)."""
+    cols = ", ".join(fields)
+    marks = ", ".join(["%s"] * len(fields))
+    try:
+        with connect(state["url"]) as db:
+            db.execute(f"INSERT INTO u64_events ({cols}) VALUES ({marks})", tuple(fields.values()))
+    except Exception as e:
+        print(f"error: posting to Discord: {e}", file=sys.stderr)
+
+
+def save_mode_state(mic: bool, music: bool) -> None:
+    try:
+        with connect(state["url"]) as db:
+            db.execute(
+                """INSERT INTO bot_settings (key, value) VALUES ('u64_state', %s)
+                   ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value""",
+                (json.dumps({"mic": mic, "music": music}),),
+            )
+    except Exception as e:
+        print(f"error: saving F1/F3 state: {e}", file=sys.stderr)
+
+
+def watch_modes(stop: threading.Event) -> None:
+    """Tell Lexi whenever F1 (mic) or F3 (music) is switched on the C64."""
+    last = None
+    with httpx.Client(timeout=chat.TIMEOUT) as http:
+        while not stop.is_set():
+            mode = chat.http_readmem(http, state["host"], chat.MODE_FLAG_ADDR, 1)
+            music = chat.http_readmem(http, state["host"], chat.MUSIC_ACTIVE_ADDR, 1)
+            if mode and music:
+                now = (mode[0] == chat.MODE_MIC, music[0] == 1)
+                if now != last:
+                    save_mode_state(*now)
+                    if last is not None:
+                        if now[0] != last[0]:
+                            print(f"F1: mic {'on' if now[0] else 'off'}")
+                            insert_event(kind="mode", source="f1", mic=now[0], music=now[1])
+                        if now[1] != last[1]:
+                            print(f"F3: music {'on' if now[1] else 'off'}")
+                            insert_event(kind="mode", source="f3", mic=now[0], music=now[1])
+                    last = now
+            stop.wait(MODE_POLL_INTERVAL)
+
+
+def on_local_reply(user_input: str, reply: str) -> None:
+    """chat.py's reply hook: capture the face saying it and post it to Discord (PNG and GIF)."""
+    with httpx.Client(timeout=chat.TIMEOUT) as http:
+        if user_input.startswith("[music]"):
+            source, question = "music", user_input[len("[music]"):].strip()
+        else:
+            mode = chat.http_readmem(http, state["host"], chat.MODE_FLAG_ADDR, 1)
+            source = "mic" if mode and mode[0] == chat.MODE_MIC else "keyboard"
+            question = user_input
+        frames = capture_speech(http, state["host"], True)
+    if not frames:
+        return
+    png = to_png(best_screenshot(frames), state["chargen"])
+    gif = to_gif(frames, state["chargen"])
+    insert_event(kind="exchange", source=source, question=plain(question), reply=plain(reply), png=png, gif=gif)
+    print(f"posted {source} exchange to Discord")
+
+
+def start_local_chat(stop: threading.Event) -> None:
+    """The same keyboard, F1 mic and F3 music listeners as chat.py."""
+    api_key = os.environ.get("OPENAI_API_KEY")
+    if not api_key:
+        print("warning: OPENAI_API_KEY not set, so C64 keyboard, F1 mic and F3 music are off (Discord still works)")
+        return
+    openai_client = chat.OpenAI(api_key=api_key)
+    history: list = []
+    http = httpx.Client(timeout=chat.TIMEOUT)
+    chat.ON_REPLY = on_local_reply
+    threading.Thread(target=chat.keyboard_listener,
+                     args=(openai_client, http, state["host"], history, stop, gpt_lock), daemon=True).start()
+    if chat.PYAUDIO_AVAILABLE:
+        threading.Thread(target=chat.mic_listener,
+                         args=(openai_client, http, state["host"], history, stop, gpt_lock), daemon=True).start()
+    else:
+        print("warning: pyaudio not installed, mic mode unavailable")
+        print("         install with: pip install pyaudio")
+    print("F1: toggle mic  F3: start/stop music recording")
+
+
 # ---------- main ----------
 
 def main() -> int:
@@ -363,6 +456,7 @@ def main() -> int:
         return 0
 
     url = database_url(cfg, args.app)
+    state.update(url=url, host=host, chargen=chargen)
 
     if not args.no_prg:
         prg_path = Path(__file__).parent / "talking_face.prg"
@@ -375,7 +469,9 @@ def main() -> int:
 
     stop = threading.Event()
     threading.Thread(target=heartbeat, args=(url, stop), daemon=True).start()
-    print(f"C64 discord bridge v{VERSION} ({BUILD}). waiting for Lexi. ctrl-c to quit.")
+    threading.Thread(target=watch_modes, args=(stop,), daemon=True).start()
+    print(f"C64 discord bridge v{VERSION} ({BUILD}). waiting for Lexi and the C64. ctrl-c to quit.")
+    start_local_chat(stop)
 
     db = None
     with httpx.Client(timeout=chat.TIMEOUT) as http:
@@ -396,7 +492,8 @@ def main() -> int:
                 print(f"> {question_line(job)}")
                 print(f"< {job['reply']}")
                 try:
-                    image, kind = run_job(job, http, host, chargen, stop)
+                    with gpt_lock:
+                        image, kind = run_job(job, http, host, chargen, stop)
                     finish_job(db, job["id"], image, kind)
                     print(f"sent {kind} ({len(image) // 1024} KB)")
                 except Exception as e:

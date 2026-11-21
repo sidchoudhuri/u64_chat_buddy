@@ -17,8 +17,8 @@ try:
 except ImportError:
     PYAUDIO_AVAILABLE = False
 
-VERSION = "0.4.4"
-BUILD   = "2026-04-19-1"
+VERSION = "0.4.5"
+BUILD   = "2026-11-20-1"
 
 CONFIG_PATH = Path(__file__).parent / ".c64_config.json"
 
@@ -75,6 +75,10 @@ SYSTEM_PROMPT = (
 )
 
 WHISPER_MUSIC_PROMPT = "Song lyrics, singing, music."
+
+# Called as ON_REPLY(user_input, reply) after each reply is sent to the C64, while the
+# face is speaking it. discord_bridge.py sets this to post the exchange to Discord.
+ON_REPLY = None
 
 def load_or_ask_host() -> str:
     if CONFIG_PATH.exists():
@@ -367,6 +371,11 @@ def process_input(user_input: str, openai_client: OpenAI,
 
     history.append({"role": "assistant", "content": reply})
     send_response(http, host, reply)
+    if ON_REPLY:
+        try:
+            ON_REPLY(user_input, reply)
+        except Exception as e:
+            print(f"error: reply hook: {e}", file=sys.stderr)
 
 def mic_listener(openai_client: OpenAI, http: httpx.Client, host: str,
                  history: list, stop_event: threading.Event,
@@ -491,6 +500,49 @@ def mic_listener(openai_client: OpenAI, http: httpx.Client, host: str,
     audio.terminate()
     print("mic listener stopped")
 
+def keyboard_listener(openai_client: OpenAI, http: httpx.Client, host: str,
+                      history: list, stop_event: threading.Event,
+                      gpt_lock: threading.Lock) -> None:
+    """Reads what's typed on the C64 keyboard and answers it."""
+    while not stop_event.is_set():
+        result = http_readmem(http, host, INPUT_READY_ADDR, 1)
+        if result is None:
+            time.sleep(POLL_INTERVAL)
+            continue
+
+        if result[0] != 1:
+            time.sleep(POLL_INTERVAL)
+            continue
+
+        mode = http_readmem(http, host, MODE_FLAG_ADDR, 1)
+        if mode and mode[0] == MODE_MIC:
+            time.sleep(POLL_INTERVAL)
+            continue
+
+        len_result = http_readmem(http, host, INPUT_LEN_ADDR, 1)
+        if len_result is None or len_result[0] == 0:
+            http_put(http, host, INPUT_READY_ADDR, b"\x00")
+            time.sleep(POLL_INTERVAL)
+            continue
+
+        input_length = len_result[0]
+        buf = http_readmem(http, host, INPUT_BUF_ADDR, input_length)
+        if buf is None:
+            http_put(http, host, INPUT_READY_ADDR, b"\x00")
+            time.sleep(POLL_INTERVAL)
+            continue
+
+        http_put(http, host, INPUT_READY_ADDR, b"\x00")
+
+        user_input = screen_codes_to_ascii(buf).strip()
+        if not user_input:
+            continue
+
+        print(f"> {user_input}")
+        with gpt_lock:
+            process_input(user_input, openai_client, http, host,
+                          history, stop_event)
+
 def main() -> int:
     api_key = os.environ.get("OPENAI_API_KEY")
     if not api_key:
@@ -530,45 +582,7 @@ def main() -> int:
             mic_thread.start()
 
         try:
-            while True:
-                result = http_readmem(http, host, INPUT_READY_ADDR, 1)
-                if result is None:
-                    time.sleep(POLL_INTERVAL)
-                    continue
-
-                if result[0] != 1:
-                    time.sleep(POLL_INTERVAL)
-                    continue
-
-                mode = http_readmem(http, host, MODE_FLAG_ADDR, 1)
-                if mode and mode[0] == MODE_MIC:
-                    time.sleep(POLL_INTERVAL)
-                    continue
-
-                len_result = http_readmem(http, host, INPUT_LEN_ADDR, 1)
-                if len_result is None or len_result[0] == 0:
-                    http_put(http, host, INPUT_READY_ADDR, b"\x00")
-                    time.sleep(POLL_INTERVAL)
-                    continue
-
-                input_length = len_result[0]
-                buf = http_readmem(http, host, INPUT_BUF_ADDR, input_length)
-                if buf is None:
-                    http_put(http, host, INPUT_READY_ADDR, b"\x00")
-                    time.sleep(POLL_INTERVAL)
-                    continue
-
-                http_put(http, host, INPUT_READY_ADDR, b"\x00")
-
-                user_input = screen_codes_to_ascii(buf).strip()
-                if not user_input:
-                    continue
-
-                print(f"> {user_input}")
-                with gpt_lock:
-                    process_input(user_input, openai_client, http, host,
-                                  history, stop_event)
-
+            keyboard_listener(openai_client, http, host, history, stop_event, gpt_lock)
         except KeyboardInterrupt:
             print()
         finally:

@@ -1,5 +1,21 @@
 # u64_chat_buddy devlog
 
+## 2026-11-20 - Discord bridge 0.2.0, chat.py 0.4.5
+
+**The bridge now does everything chat.py does.** With 0.1.0 running, pressing F1 switched the C64 to MIC but nothing was listening, because the mic, music and keyboard handling only lived in `chat.py`. Now the bridge runs those same listeners, so typing on the C64, F1 mic mode and F3 music mode all work while it's connected to Discord. `chat.py` stays the version without Discord.
+
+**chat.py 0.4.5.** The keyboard loop moved into a `keyboard_listener()` function so the bridge can share it, and there's an `ON_REPLY` hook that runs after each reply is sent. Nothing changes when you run `chat.py` on its own.
+
+**F1/F3 in Discord.**
+- The bridge watches the mode and music flags and tells Lexi when they change.
+- Lexi posts an embed for each switch and shows the current mode in her status line, e.g. `C64: MIC + MUSIC`.
+
+**Local conversations in Discord.**
+- Questions typed or spoken at the C64, and the face's music comments, are captured as a screenshot and a GIF.
+- Lexi posts them in the commodore 64 channels, using each channel's screenshot/gif choice.
+
+**Taking turns.** Discord jobs and local conversations share one lock, so the face only ever answers one thing at a time.
+
 ## 2026-11-20 - Discord bridge 0.1.0
 
 The talking face can now talk on Discord. Lexi, my Discord bot, has a **commodore 64** personality, and when someone talks to her with it switched on, the real C64 says the reply.
