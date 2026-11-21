@@ -1,0 +1,18 @@
+# Keeps the pinned actions and the app's npm packages (Electron, electron-builder) up to date:
+# Dependabot opens a pull request when there's a new release or a security fix.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns: ['*']
+  - package-ecosystem: npm
+    directory: /app
+    schedule:
+      interval: weekly
+    groups:
+      electron:
+        patterns: ['electron', 'electron-builder']

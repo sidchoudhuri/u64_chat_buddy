@@ -1,5 +1,10 @@
 # u64_chat_buddy devlog
 
+## 2026-11-21 - Chat Buddy 1.0.3
+
+- **Microphone really fixed on the Mac:** the app is now signed with permission to use the microphone. Without it, macOS turned the microphone down silently, never asked, and never added Chat Buddy to the Microphone list. If you tried 1.0.2, run `tccutil reset Microphone de.m0n.chatbuddy` once in Terminal, then press Start and choose Allow.
+- **Build hardening:** the build now uses pinned, current versions of its tools and Node 26.
+
 ## 2026-11-21 - Chat Buddy 1.0.2
 
 - **Microphone fixed on the Mac:** Chat Buddy now asks for microphone access the first time you press Start. Before, macOS was never asked, so the app wasn't in the Microphone list and F1 mic mode and F3 music mode only heard silence.
