@@ -366,7 +366,7 @@ Lexi runs on Heroku and can't reach the C64 on your home network, so the two mee
 1. Lexi gets the reply from ChatGPT (using the commodore 64 prompt in her `data/chat.json`) and adds a job to the `u64_jobs` table.
 2. The bridge, running on a computer on the same network as the C64, picks the job up.
 3. It scrolls the question on row 1, sends the reply to the bottom ticker so the face speaks it, and captures the screen while it talks.
-4. It puts the PNG or GIF back in the database, and Lexi posts it with the reply text.
+4. It puts the PNG or GIF back in the database, and Lexi shows it in the channel's C64 live message. The text reply was already posted, so the chat doesn't wait for the C64.
 
 The bridge checks in every few seconds. If Lexi hasn't heard from it for 20 seconds she posts the reply as text with "the C64 is offline".
 
@@ -380,7 +380,7 @@ The bridge also runs `chat.py`'s own listeners, so one script does it all:
 
 What happens on the C64 shows up in Discord too:
 - **Status line:** Lexi's shows the current mode while the bridge runs, e.g. `Watching for Lexi · C64: MIC + MUSIC`.
-- **C64 live message:** in channels where it's switched on (`lexi c64 live on`), Lexi keeps one message up to date instead of posting every exchange. It shows the mode, the latest screenshot from a keyboard or mic exchange, and the last few lines said. Music comments are sent as text only.
+- **C64 live message:** every channel on Lexi's commodore 64 personality has one message she keeps up to date. It shows the mode, the latest screenshot or GIF (from Discord questions and from keyboard or mic exchanges here), and the last few lines. Music comments are sent as text only. The Discord conversation itself stays as text replies, and Lexi reacts 🖥️ when the C64 has said a reply.
 
 Only one conversation uses the C64 at a time. A Discord message waits while the face is answering a mic question, and the other way round.
 

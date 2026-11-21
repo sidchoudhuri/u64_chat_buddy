@@ -28,7 +28,7 @@ from PIL import Image
 
 import chat
 
-VERSION = "0.2.1"
+VERSION = "0.2.2"
 BUILD   = "2026-11-20-1"
 
 HEARTBEAT_INTERVAL  = 5.0      # seconds between "bridge is alive" check-ins
@@ -394,7 +394,8 @@ def watch_modes(stop: threading.Event) -> None:
 
 def on_local_reply(user_input: str, reply: str) -> None:
     """chat.py's reply hook: post the exchange to Lexi's C64 live message.
-    Keyboard and mic exchanges include a screenshot; music comments are text only."""
+    Keyboard and mic exchanges include a screenshot and a GIF (each channel shows the one it's set to);
+    music comments are text only."""
     if user_input.startswith("[music]"):
         insert_event(kind="exchange", source="music",
                      question=plain(user_input[len("[music]"):].strip()), reply=plain(reply))
@@ -403,9 +404,10 @@ def on_local_reply(user_input: str, reply: str) -> None:
     with httpx.Client(timeout=chat.TIMEOUT) as http:
         mode = chat.http_readmem(http, state["host"], chat.MODE_FLAG_ADDR, 1)
         source = "mic" if mode and mode[0] == chat.MODE_MIC else "keyboard"
-        frames = capture_speech(http, state["host"], False)
+        frames = capture_speech(http, state["host"], True)
     png = to_png(best_screenshot(frames), state["chargen"]) if frames else None
-    insert_event(kind="exchange", source=source, question=plain(user_input), reply=plain(reply), png=png)
+    gif = to_gif(frames, state["chargen"]) if frames else None
+    insert_event(kind="exchange", source=source, question=plain(user_input), reply=plain(reply), png=png, gif=gif)
     print(f"posted {source} exchange to Discord")
 
 

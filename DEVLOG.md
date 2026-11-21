@@ -1,5 +1,9 @@
 # u64_chat_buddy devlog
 
+## 2026-11-20 - Discord bridge 0.2.2
+
+Lexi now shows all the C64's pictures in one live message per channel, which follows that channel's screenshot or GIF setting. So keyboard and mic exchanges send both a screenshot and a GIF again. Music comments stay text only.
+
 ## 2026-11-20 - Discord bridge 0.2.1
 
 Posting a GIF to Discord for every local exchange was far too much. Lexi now shows C64 activity in a single live message that updates in place, so the bridge sends less:
