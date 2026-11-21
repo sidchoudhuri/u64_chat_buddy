@@ -9,6 +9,7 @@ This README is a quick map of the main parts of the `talking_face.asm` file that
 - [Video Timing](#video-timing)
 - [Mic Mode & Transcription](#mic-mode-and-transcription)
 - [Music Mode](#music-mode)
+- [Discord Bridge (Lexi)](#discord-bridge-lexi)
 - [Problems & Solutions](#scrolling-text)
 - [Build / Test Cycle](#build--test-cycle)
 - [Safe Things To Tweak](#safe-first-things-to-tweak)
@@ -354,6 +355,59 @@ The bot does not comment on every window. It rolls dice each window, with the ba
 
 ### Session memory
 Music comments use the same conversation history as keyboard and mic input, so the bot remembers what it heard earlier in the session and can refer back to it.
+
+## Discord Bridge (Lexi)
+
+`discord_bridge.py` connects the talking face to Lexi, the Discord bot, as her **commodore 64** personality. When someone in Discord talks to Lexi with that personality on, the real C64 says the reply, and Lexi posts a screenshot or GIF of it in the channel.
+
+### How it works
+Lexi runs on Heroku and can't reach the C64 on your home network, so the two meet in Lexi's Heroku Postgres database:
+
+1. Lexi gets the reply from ChatGPT (using the commodore 64 prompt in her `data/chat.json`) and adds a job to the `u64_jobs` table.
+2. The bridge, running on a computer on the same network as the C64, picks the job up.
+3. It scrolls the question on row 1, sends the reply to the bottom ticker so the face speaks it, and captures the screen while it talks.
+4. It puts the PNG or GIF back in the database, and Lexi posts it with the reply text.
+
+The bridge checks in every few seconds. If Lexi hasn't heard from it for 20 seconds she posts the reply as text with "the C64 is offline".
+
+Your computer only makes outgoing connections to the database. Nothing needs port forwarding, and the C64 isn't exposed to the internet.
+
+### Screenshots
+The U64 API has no screenshot call, so the bridge reads screen RAM (`$0400`), colour RAM (`$D800`), the border and background colours (`$D020`/`$D021`) and the character set bit in `$D018`, then draws the screen with the real C64 character ROM. Sprites aren't drawn (the talking face doesn't use any).
+
+- **screenshot**: one PNG at 2x, picked from the moment the ticker shows the most reply text
+- **gif**: an animated GIF of the whole reply scrolling past, shrunk if needed to stay under 8 MB
+
+Switch between them in Discord with `lexi personality commodore 64 screenshot` or `lexi personality commodore 64 gif`.
+
+### Setup
+```bash
+pip install httpx openai pillow "psycopg[binary]"
+```
+
+The bridge also needs:
+- **The C64 character ROM**: it looks in VICE's install folder for `chargen` (4096 bytes) and asks for the path if it can't find it.
+- **Lexi's database address**: it gets this from the Heroku CLI (`heroku config:get DATABASE_URL -a lexi-persimmons`), so be logged in with `heroku login`. Or set `DATABASE_URL` yourself.
+
+Both settings, and the Heroku app name, are saved in `.c64_config.json` next to the C64's IP.
+
+### Running
+```bash
+python3 discord_bridge.py              # loads talking_face.prg, then waits for Lexi
+python3 discord_bridge.py --no-prg     # face is already running
+python3 discord_bridge.py --snapshot screen.png   # save the current screen and quit (good for checking the font)
+```
+
+Run the bridge **instead of** `chat.py`, not alongside it. Both drive the same C64 memory.
+
+### In Discord (owner only)
+```
+lexi personality commodore 64        switch the channel to the C64
+lexi personality commodore 64 gif    ...and post GIFs
+lexi personality screenshot          back to screenshots
+lexi personality sassy               back to normal Lexi
+lexi chat on                         chat mode has to be on in the channel
+```
 
 ## Build / Test Cycle
 
